@@ -94,6 +94,20 @@ impl DeviceHandle {
     pub fn send(&self, t_us: u64, ev: HidEvent) {
         let _ = self.hid_tx.send((t_us, ev));
     }
+
+    /// A cloneable sender for other threads (e.g. a latency probe).
+    pub fn sender(&self) -> InputSender {
+        InputSender(self.hid_tx.clone())
+    }
+}
+
+#[derive(Clone)]
+pub struct InputSender(mpsc::UnboundedSender<Stamped>);
+
+impl InputSender {
+    pub fn send(&self, t_us: u64, ev: HidEvent) {
+        let _ = self.0.send((t_us, ev));
+    }
 }
 
 pub fn start<S: MediaSink>(

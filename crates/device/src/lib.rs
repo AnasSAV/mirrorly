@@ -10,4 +10,6 @@ pub mod media;
 pub mod session;
 
 pub use feedback::RctlMode;
-pub use session::{DeviceEvent, DeviceHandle, DeviceInfo, KeyframeRequester, MediaSink, Options, start};
+pub use session::{
+    DeviceEvent, DeviceHandle, DeviceInfo, InputSender, KeyframeRequester, MediaSink, Options, start,
+};
