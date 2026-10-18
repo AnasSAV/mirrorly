@@ -110,6 +110,40 @@ is ~1–1.5 ms worse at p50 here (larger back buffer; fewer direct flips).
 Default stays windowed + immediate. `MIRROR_DXGI_TRACE=1` logs the raw
 statistics.
 
+### USB vs Wi-Fi (Phase 3, same app session, same Calculator screen)
+
+One mirror session with `--timings-csv`; the cable was unplugged (Wi-Fi run),
+then plugged back in (USB run). F9 probe, 10 taps each. PC on 5 GHz Wi-Fi
+(Realtek RTL8852BE, Wi-Fi 6), network profile Private. Wi-Fi touches use
+Indigo digitizer events, USB touches use universalhidservice reports (see
+README: iOS ignores the latter over the network).
+
+| Date | Transport | Probe target | Tap → on screen (10 taps) | Median | Notes |
+|---|---|---|---|---|---|
+| 2026-10-18 | **USB** | Calculator "4"\* | 78.7, 78.7, 82.7, 85.2, 88.7, 89.7, 90.4, 103.1, 106.7, 121.1 ms | **89.2 ms** | link Good |
+| 2026-10-18 | **Wi-Fi** | Calculator "5" | 87.4, 88.9, 92.7, 93.6, 96.0, 96.6, 97.0, 102.8, 119.6, 149.1 ms | **96.3 ms** | link Fair, jitter ≈ 10.5 ms |
+
+\* the window shifted between runs, so the USB probe hit the neighbouring
+key; same kind of response (a digit appears).
+
+Per-frame (CSV, 1505 Wi-Fi frames / 1683 USB frames):
+
+| | Wi-Fi | USB |
+|---|---|---|
+| last packet → Present() p50 / p95 | 1.00 / 4.54 ms | 1.09 / 1.65 ms |
+| longest gap between frames | 152 ms | 55 ms |
+| RFC 3550 jitter (overlay) | ~9–13 ms ("Fair"); spikes to 35 ms during big animations | ~5 ms (encoder variation) |
+| tunnel setup | pair-verify 113–221 ms + TLS-PSK 188–354 ms + RSD 46–114 ms | CoreDeviceProxy 59–130 ms + RSD 17–33 ms |
+| switch time | unplug → Wi-Fi video ≈ 2.1 s | plug in → USB video ≈ 1.3 s |
+
+Reading: Wi-Fi adds ~7 ms at the median and a much heavier tail. The video
+rides inside the TLS-over-TCP tunnel, so a lost Wi-Fi packet is retransmitted
+and everything behind it waits (head-of-line blocking): frames then arrive in
+a burst (152 ms gap; p95 frame→Present 4.5 ms as the burst is decoded). No
+frames are lost, so no keyframe requests fire; the cost is delay, not
+corruption. Removing it needs Apple's QUIC tunnel transport, which idevice
+0.1.68 does not implement. Nothing on our side buffers.
+
 ### Glass-to-glass (camera)
 
 Not measured: no camera available (2026-10-18). Best estimate from the

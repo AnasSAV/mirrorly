@@ -3,7 +3,7 @@
 Low-latency iPhone screen mirroring and control for Windows, in Rust
 ("scrcpy for iPhone"). USB first, Wi-Fi later.
 
-**Status: Phase 1 (USB MVP) under test.** Phase 0 findings:
+**Status: USB and Wi-Fi working (Phases 1–3).** Phase 0 findings:
 [FEASIBILITY.md](FEASIBILITY.md). The code in `spike/` and `spike-decode/` is
 throwaway measurement tooling; the app lives in `crates/`.
 
@@ -28,14 +28,57 @@ target\release\iphone-mirror.exe            # add --vsync to present with vsync
 A white dot marks a click the instant it happens and disappears when the
 phone's response arrives. The console shows connection status and a stats
 line every 5 s. Options: `--vsync`, `--overlay`, `--timings-csv FILE`,
-`--rctl pmd3|idevice|off`, `--no-auto-ddi`. How latency is measured, and
+`--rctl pmd3|idevice|off`, `--no-auto-ddi`, `--no-wifi`. Diagnostics via
+environment: `MIRROR_TOUCH=uhs|indigo` (force a touch path),
+`MIRROR_NAGLE=1`, `MIRROR_DXGI_TRACE=1`. How latency is measured, and
 every result: [LATENCY.md](LATENCY.md).
+
+## Wi-Fi
+
+1. Connect the iPhone by USB once and start the app. It creates a Wi-Fi
+   pairing record automatically and silently (the phone already trusts this PC
+   over USB); you'll see "Setting up Wi-Fi (one time)…" in the title.
+2. Unplug. The app looks for the phone on the network (Bonjour,
+   `_remotepairing._tcp`) and continues over Wi-Fi in about 2 s. Plug the cable
+   in again and it switches back to USB by itself: USB is always preferred.
+3. The title shows the transport; the light in the top-right corner of the
+   picture shows link quality (green < 10 ms jitter, amber < 25 ms, red above
+   that or after any loss / keyframe request in the last 2 s).
+
+`--no-wifi` disables all of this. Pairing records live in
+`%LOCALAPPDATA%\iphone-mirror\wifi\` (delete the files to forget the phone).
+
+### Windows requirements for Wi-Fi
+
+- **Network profile Private**: Settings → Network & internet → Wi-Fi → (your
+  network) → Network profile type → Private. On Public, Windows Firewall drops
+  the phone's Bonjour (mDNS, UDP 5353) answers.
+- **Firewall**: if Windows asks whether `iphone-mirror.exe` may communicate on
+  private networks, allow it (inbound UDP 5353 for discovery; the rest are
+  outbound TCP connections to the phone).
+- **Same network, no client isolation**: PC and iPhone on the same Wi-Fi.
+  Guest networks and many apartment/hotel networks isolate clients from each
+  other; mirroring cannot work there.
+- **VPN**: a full-tunnel VPN can hide the local network; disconnect it if the
+  phone is not found.
+- **Wi-Fi power saving off** for the lowest jitter: Device Manager → Network
+  adapters → your Wi-Fi adapter → Power Management → untick "Allow the
+  computer to turn off this device to save power"; and in Control Panel →
+  Power Options → Change plan settings → Advanced → Wireless Adapter Settings
+  → Power Saving Mode → Maximum Performance.
+- **iPhone**: unlocked, on the same Wi-Fi.
+
+Over Wi-Fi, touches are sent as Indigo digitizer events: iOS ignores the
+touchscreen reports used over USB when they arrive over the network
+(measured; cause unknown). Latency vs USB is in [LATENCY.md](LATENCY.md):
+about +7 ms at the median, with occasional stalls because the tunnel is
+TLS over TCP.
 
 ## Layout
 
 | Crate | Role |
 |---|---|
-| `crates/device` | usbmuxd (TCP_NODELAY), CoreDeviceProxy tunnel, Developer Disk Image, media session, RTCP feedback, HID execution, reconnect (network thread) |
+| `crates/device` | USB (usbmuxd with TCP_NODELAY, CoreDeviceProxy) and Wi-Fi (RemotePairing, Bonjour, TLS-PSK) transports into one tunnel type; Developer Disk Image, media session, RTCP feedback, HID execution, reconnect with USB preferred (network thread) |
 | `crates/video` | RTP/HEVC depacketizer (marker-bit), FFmpeg d3d11va decode into textures on the app's D3D11 device (decode thread) |
 | `crates/input` | Window → panel coordinate mapping, gesture state (touch vs bottom-edge system gesture), key mapping |
 | `crates/app` | Window, DXGI flip-model swapchain, zero-copy NV12 render, present thread, menu bar |
