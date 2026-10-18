@@ -82,6 +82,10 @@ Using it
     rotate, App Switcher, Home. Drag the bar to move the window.
   - Ctrl+1 Home, Ctrl+2 App Switcher, Ctrl+3 Spotlight, right-click Home.
   - Typing goes to the iPhone; Ctrl+C/V/X/A/Z work as Command shortcuts.
+  - Copy photos or files on the iPhone, then drag the chip on the bar out to
+    Windows. Drop PC files on the window to send them to the iPhone: photos
+    are pasted into the open app, documents are saved by name in a Mirrorly
+    folder in the Files app.
   - After one USB connection, unplug: Mirrorly continues over Wi-Fi (same
     network, Windows network profile "Private"). Plug in to go back to USB.
 

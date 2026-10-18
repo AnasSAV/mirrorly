@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0D1226"/>
+      <stop offset="1" stop-color="#141a35"/>
+    </linearGradient>
+    <linearGradient id="phone" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3B4A8F"/>
+      <stop offset="1" stop-color="#5B5FC7"/>
+    </linearGradient>
+    <linearGradient id="wifi" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3B4A8F"/>
+      <stop offset="1" stop-color="#7B5BD6"/>
+    </linearGradient>
+    <linearGradient id="stage" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2F80FF"/>
+      <stop offset="1" stop-color="#7B4DF2"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="960" height="560" rx="24" fill="url(#bg)"/>
+
+  <!-- Panel A -->
+  <text x="40" y="58" font-size="13" font-weight="700" letter-spacing="1.6" fill="#7C8BC9">TAP → ON SCREEN</text>
+  <text x="40" y="86" font-size="21" font-weight="600" fill="#FFFFFF">Almost all of the delay is the iPhone itself</text>
+  <text x="40" y="110" font-size="14" fill="#A3ADD6">Median of 10 timed taps on a Calculator key, from the click to the response being shown.</text>
+
+  <!-- axis: x0 = 170, 100 ms = 640 px -->
+  <g font-size="12" fill="#6F7AA8" text-anchor="middle">
+    <path d="M170 140 V262 M330 140 V262 M490 140 V262 M650 140 V262 M810 140 V262" stroke="#FFFFFF" stroke-opacity="0.07"/>
+    <text x="170" y="282">0</text>
+    <text x="330" y="282">25</text>
+    <text x="490" y="282">50</text>
+    <text x="650" y="282">75</text>
+    <text x="810" y="282">100 ms</text>
+  </g>
+
+  <!-- USB: 86.8 phone + 0.7 PC = 87.5 -->
+  <text x="40" y="172" font-size="15" font-weight="600" fill="#FFFFFF">USB</text>
+  <rect x="170" y="152" width="555.5" height="34" rx="8" fill="url(#phone)"/>
+  <rect x="721.5" y="152" width="8.5" height="34" rx="3" fill="#38E1A8"/>
+  <text x="186" y="174" font-size="13" fill="#E3E7FF">iPhone: touch → app → screen → video encoder</text>
+  <text x="742" y="175" font-size="16" font-weight="700" fill="#FFFFFF">87.5 ms</text>
+
+  <!-- Wi-Fi: 96.3 total, ~1.0 PC -->
+  <text x="40" y="226" font-size="15" font-weight="600" fill="#FFFFFF">Wi-Fi</text>
+  <rect x="170" y="206" width="610" height="34" rx="8" fill="url(#wifi)"/>
+  <rect x="776.3" y="206" width="6.4" height="34" rx="3" fill="#38E1A8"/>
+  <text x="186" y="228" font-size="13" fill="#E3E7FF">iPhone + Wi-Fi network</text>
+  <text x="797" y="229" font-size="16" font-weight="700" fill="#FFFFFF">96.3 ms</text>
+
+  <!-- legend -->
+  <g font-size="13" fill="#A3ADD6">
+    <rect x="40" y="304" width="14" height="14" rx="3" fill="url(#phone)"/>
+    <text x="62" y="316">iPhone and connection</text>
+    <rect x="232" y="304" width="14" height="14" rx="3" fill="#38E1A8"/>
+    <text x="254" y="316">Mirrorly on the PC (about 1 ms: receive, decode, draw)</text>
+  </g>
+
+  <path d="M40 346 H920" stroke="#FFFFFF" stroke-opacity="0.08"/>
+
+  <!-- Panel B: inside Mirrorly, p50, 0.1 ms = 120 px (x0 = 300) -->
+  <text x="40" y="384" font-size="13" font-weight="700" letter-spacing="1.6" fill="#7C8BC9">INSIDE MIRRORLY · MEDIAN PER FRAME</text>
+  <text x="40" y="410" font-size="14" fill="#A3ADD6">Last video packet in → frame handed to the screen: <tspan fill="#FFFFFF" font-weight="700">0.61 ms</tspan>. No buffering, no copies.</text>
+
+  <g font-size="14">
+    <text x="40" y="447" fill="#FFFFFF">Hardware decode</text>
+    <rect x="300" y="432" width="528" height="22" rx="6" fill="url(#stage)"/>
+    <text x="840" y="448" font-weight="700" fill="#FFFFFF">0.44 ms</text>
+
+    <text x="40" y="481" fill="#FFFFFF">Draw + Present</text>
+    <rect x="300" y="466" width="84" height="22" rx="6" fill="url(#stage)"/>
+    <text x="396" y="482" font-weight="700" fill="#FFFFFF">0.07 ms</text>
+
+    <text x="40" y="515" fill="#FFFFFF">Hand-offs between threads</text>
+    <rect x="300" y="500" width="96" height="22" rx="6" fill="url(#stage)"/>
+    <text x="408" y="516" font-weight="700" fill="#FFFFFF">0.08 ms</text>
+  </g>
+  <g font-size="12.5" fill="#6F7AA8">
+    <text x="520" y="482">Then shown at once: Mirrorly skips the vsync wait.</text>
+    <text x="520" y="516">iPhone 11 · iOS 27 · Windows 11 · Intel UHD · 144 Hz</text>
+  </g>
+</svg>

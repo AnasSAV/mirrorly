@@ -298,3 +298,23 @@ target\release\s3_input.exe live
 target\release\s3_input.exe latency X Y -n 10 --threshold 1200 [--drag-dx N]
 set PATH=third_party\ffmpeg\bin;%PATH% && target\release\s4_decode.exe out\capture.h265 [--readback|--sw]
 ```
+
+## 11. File transfer (v0.2, 2026-10-18)
+
+Probed with `spike/src/bin/s6_files.rs` and `s7_fileservice.rs` on the
+iPhone 11, iOS 27. What the iPhone offers, and what Mirrorly uses:
+
+| Question | Finding | Used |
+|---|---|---|
+| A drag-and-drop service? | None. No RSD service carries drags; a drag inside iOS can't be observed | — |
+| Clipboard (`com.apple.coredevice.pasteboardservice`) | PULL with `allPromised` lists item types in 9–20 ms without loading data; RESOLVE fetches one type; SET with one inline item per file works (44 ms for 18 KB). Works over USB and Wi-Fi | **yes**, both directions |
+| Photos › Copy Photo | one `public.jpeg` item per photo (iOS converts HEIC); 1.4 MB in 0.23 s, 4.3 MB in 0.70 s over USB | yes |
+| Files › Copy (.txt) | `com.apple.DocumentManager.FPItem.File` (NSKeyedArchiver, `_filename`) + `public.plain-text` with the contents | yes |
+| Files › Copy / Share › Copy (PDF) | `com.apple.DocumentManager.FINode.File` (archive holding the `file://` URL) + `com.adobe.pdf` with the contents | yes |
+| Pasting a SET item | Notes and Files paste it; Files names it by type ("PNG image"); no "Allow Paste" prompt. ⌘V via the HID keyboard pastes in Notes, and in Files once the folder has focus | yes |
+| Camera roll (AFC `/DCIM`) | readable (1,267 files) | not yet |
+| Files' "On My iPhone" storage | closed: the CoreDevice file service refuses `group.com.apple.FileProvider.LocalStorage` (ContainerLookupErrorDomain 7) and `com.apple.DocumentsApp` (2); house_arrest refuses `com.apple.DocumentsApp` | — |
+| Apps' Documents (house_arrest `VendDocuments`) | works for apps with `UIFileSharingEnabled` (VLC, Chrome, NotebookLM here); with `LSSupportsOpeningDocumentsInPlace` Files shows the folder as On My iPhone › *app* | **yes**, named documents |
+
+Text copies are never resolved: per pymobiledevice3, resolving a Notes copy
+stalls the pasteboard daemon for about a minute (`public.rtf`).

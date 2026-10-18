@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="440" viewBox="0 0 1280 440" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2F80FF"/>
+      <stop offset="1" stop-color="#7B4DF2"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.18" cy="0.1" r="0.7">
+      <stop offset="0" stop-color="#3B5BFF" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#3B5BFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.85" cy="0.95" r="0.6">
+      <stop offset="0" stop-color="#8B4DF2" stop-opacity="0.40"/>
+      <stop offset="1" stop-color="#8B4DF2" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="wall" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#1E3A8A"/>
+      <stop offset="0.55" stop-color="#6D28D9"/>
+      <stop offset="1" stop-color="#DB2777"/>
+    </linearGradient>
+    <linearGradient id="desk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1A2140"/>
+      <stop offset="1" stop-color="#121730"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity="0.55"/>
+    </filter>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <clipPath id="screen"><rect x="905" y="96" width="160" height="300" rx="26"/></clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="440" rx="28" fill="#0A0F24"/>
+  <rect width="1280" height="440" rx="28" fill="url(#glowA)"/>
+  <rect width="1280" height="440" rx="28" fill="url(#glowB)"/>
+  <g stroke="#FFFFFF" stroke-opacity="0.035">
+    <path d="M0 110H1280M0 220H1280M0 330H1280M160 0V440M320 0V440M480 0V440M640 0V440M800 0V440M960 0V440M1120 0V440"/>
+  </g>
+
+  <!-- App tile -->
+  <g transform="translate(72 74)" filter="url(#soft)">
+    <rect width="92" height="92" rx="22" fill="url(#tile)"/>
+    <rect x="30" y="14" width="32" height="64" rx="8" fill="none" stroke="#fff" stroke-width="5"/>
+    <rect x="40" y="20" width="12" height="4" rx="2" fill="#fff"/>
+    <path d="M51 36 L38 62 L44 62 L55 40 Z" fill="#fff" fill-opacity="0.55"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="72" y="236" fill="#FFFFFF" font-size="76" font-weight="700" letter-spacing="-1.5">Mirrorly</text>
+  <text x="74" y="284" fill="#C3CBEA" font-size="25">Your iPhone on your Windows PC.</text>
+  <text x="74" y="318" fill="#8E98C2" font-size="20">See it, control it, and drag files in and out, with almost no delay.</text>
+
+  <!-- Feature pills -->
+  <g font-size="15" font-weight="600" fill="#DCE3FF">
+    <rect x="72" y="350" width="74" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.14"/>
+    <text x="109" y="372" text-anchor="middle">USB</text>
+    <rect x="156" y="350" width="82" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.14"/>
+    <text x="197" y="372" text-anchor="middle">Wi-Fi</text>
+    <rect x="248" y="350" width="132" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.14"/>
+    <text x="314" y="372" text-anchor="middle">Drag &amp; drop</text>
+    <rect x="390" y="350" width="176" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.14"/>
+    <text x="478" y="372" text-anchor="middle">Mouse &amp; keyboard</text>
+    <rect x="576" y="350" width="150" height="34" rx="17" fill="#2F80FF" fill-opacity="0.22" stroke="#5B8CFF" stroke-opacity="0.6"/>
+    <text x="651" y="372" text-anchor="middle" fill="#BFD3FF">~1 ms on the PC</text>
+  </g>
+
+  <!-- Desktop card -->
+  <g filter="url(#shadow)">
+    <rect x="770" y="30" width="460" height="390" rx="18" fill="url(#desk)" stroke="#FFFFFF" stroke-opacity="0.08"/>
+  </g>
+  <!-- desktop icons -->
+  <g fill="#FFFFFF" fill-opacity="0.10">
+    <rect x="796" y="66" width="34" height="40" rx="5"/>
+    <rect x="796" y="128" width="34" height="40" rx="5"/>
+    <rect x="796" y="190" width="34" height="40" rx="5"/>
+  </g>
+  <g fill="#FFFFFF" fill-opacity="0.18">
+    <rect x="796" y="110" width="34" height="5" rx="2.5"/>
+    <rect x="796" y="172" width="34" height="5" rx="2.5"/>
+    <rect x="796" y="234" width="34" height="5" rx="2.5"/>
+  </g>
+  <!-- Mirrorly window: bar above the phone screen -->
+  <g filter="url(#soft)">
+    <rect x="895" y="56" width="180" height="350" rx="30" fill="#1D1D22"/>
+  </g>
+  <rect x="895" y="56" width="180" height="34" rx="14" fill="#28282C"/>
+  <rect x="895" y="74" width="180" height="16" fill="#28282C"/>
+  <circle cx="912" cy="73" r="5" fill="#FF5F57"/>
+  <circle cx="928" cy="73" r="5" fill="#FEBC2E"/>
+  <circle cx="944" cy="73" r="5" fill="#28C840"/>
+  <rect x="960" y="63" width="66" height="20" rx="10" fill="#4C61FA"/>
+  <text x="993" y="77.5" text-anchor="middle" font-size="10.5" font-weight="600" fill="#fff">3 photos</text>
+  <g fill="#FFFFFF" fill-opacity="0.85">
+    <rect x="1036" y="68" width="10" height="10" rx="2" fill="none" stroke="#fff" stroke-opacity="0.85" stroke-width="1.6"/>
+    <path d="M1056 78v-6l5-4 5 4v6z" fill="none" stroke="#fff" stroke-opacity="0.85" stroke-width="1.6" stroke-linejoin="round"/>
+  </g>
+
+  <!-- phone screen -->
+  <g clip-path="url(#screen)">
+    <rect x="905" y="96" width="160" height="300" fill="url(#wall)"/>
+    <text x="985" y="128" text-anchor="middle" font-size="12" font-weight="600" fill="#fff" fill-opacity="0.9">9:41</text>
+    <g>
+      <rect x="921" y="146" width="28" height="28" rx="7" fill="#34C759"/>
+      <rect x="957" y="146" width="28" height="28" rx="7" fill="#FFFFFF"/>
+      <rect x="993" y="146" width="28" height="28" rx="7" fill="#FF9500"/>
+      <rect x="1029" y="146" width="28" height="28" rx="7" fill="#0A84FF"/>
+      <rect x="921" y="188" width="28" height="28" rx="7" fill="#FF375F"/>
+      <rect x="957" y="188" width="28" height="28" rx="7" fill="#5E5CE6"/>
+      <rect x="993" y="188" width="28" height="28" rx="7" fill="#FFD60A"/>
+      <rect x="1029" y="188" width="28" height="28" rx="7" fill="#1C1C1E"/>
+      <rect x="921" y="230" width="28" height="28" rx="7" fill="#64D2FF"/>
+      <rect x="957" y="230" width="28" height="28" rx="7" fill="#30D158"/>
+      <rect x="993" y="230" width="28" height="28" rx="7" fill="#BF5AF2"/>
+      <rect x="1029" y="230" width="28" height="28" rx="7" fill="#FF9F0A"/>
+    </g>
+    <rect x="917" y="340" width="136" height="44" rx="16" fill="#FFFFFF" fill-opacity="0.22"/>
+    <rect x="929" y="350" width="24" height="24" rx="6" fill="#34C759"/>
+    <rect x="961" y="350" width="24" height="24" rx="6" fill="#0A84FF"/>
+    <rect x="993" y="350" width="24" height="24" rx="6" fill="#FFFFFF"/>
+    <rect x="1025" y="350" width="24" height="24" rx="6" fill="#FF9500"/>
+    <rect x="955" y="388" width="60" height="4" rx="2" fill="#fff" fill-opacity="0.85"/>
+  </g>
+  <rect x="905" y="96" width="160" height="300" rx="26" fill="none" stroke="#000" stroke-opacity="0.4"/>
+
+  <!-- tap indicator -->
+  <circle cx="1043" cy="160" r="13" fill="#FFFFFF" fill-opacity="0.35" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width="2"/>
+
+  <!-- dragged files leaving the window -->
+  <path d="M1004 88 C 1060 40, 1130 60, 1150 128" fill="none" stroke="#8FA8FF" stroke-width="2.4" stroke-dasharray="6 6" stroke-linecap="round"/>
+  <g transform="translate(1124 128)" filter="url(#soft)">
+    <rect x="10" y="-6" width="46" height="58" rx="6" fill="#E9EDFF" transform="rotate(8 33 23)"/>
+    <rect x="0" y="0" width="46" height="58" rx="6" fill="#FFFFFF"/>
+    <rect x="6" y="6" width="34" height="30" rx="3" fill="#7DA2FF"/>
+    <path d="M9 32 L19 20 L26 27 L31 22 L37 32 Z" fill="#2E5BD8"/>
+    <circle cx="31" cy="13" r="3.5" fill="#FFE27A"/>
+    <rect x="8" y="42" width="30" height="4" rx="2" fill="#C5CDE8"/>
+  </g>
+  <!-- cursor -->
+  <path d="M1168 178 l0 26 l7 -6 l5 11 l5 -2 l-5 -11 l9 0 z" fill="#FFFFFF" stroke="#0A0F24" stroke-width="1.4" stroke-linejoin="round"/>
+</svg>
