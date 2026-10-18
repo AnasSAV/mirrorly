@@ -55,6 +55,31 @@ enum Cmd {
         ms: u64,
         #[arg(long, default_value_t = 120)]
         hz: u32,
+        /// Report timestamp units: idevice default (wall-clock ns), host
+        /// monotonic ns, or 24 MHz ticks (the A13's mach_absolute_time rate).
+        #[arg(long, value_enum, default_value_t = TsMode::Default)]
+        ts: TsMode,
+    },
+    /// Edge-swipe system gesture via IndigoDigitizerEvent (edge field set).
+    /// Coordinates in 0..65535, converted to `--units` before sending.
+    EdgeSwipe {
+        #[arg(long, value_enum, default_value_t = Edge::Bottom)]
+        edge: Edge,
+        #[arg(long, value_enum, default_value_t = Units::Norm)]
+        units: Units,
+        #[arg(long, default_value_t = 32768)]
+        x1: u16,
+        #[arg(long, default_value_t = 65535)]
+        y1: u16,
+        #[arg(long, default_value_t = 32768)]
+        x2: u16,
+        #[arg(long, default_value_t = 30000)]
+        y2: u16,
+        #[arg(long, default_value_t = 200)]
+        ms: u64,
+        /// Hold still at the end point this long before End (App Switcher).
+        #[arg(long, default_value_t = 0)]
+        hold_ms: u64,
     },
     /// home | lock | volume-up | volume-down | mute | siri
     Button {
@@ -98,6 +123,56 @@ enum Cmd {
     },
     /// List the device's registered HID surfaces.
     List,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum Edge {
+    None,
+    Top,
+    Left,
+    Bottom,
+    Right,
+}
+
+/// Unknown which space IndigoDigitizerEvent points use; try each.
+#[derive(Clone, Copy, ValueEnum)]
+enum Units {
+    /// 0.0 ..= 1.0
+    Norm,
+    /// iPhone 11 pixels, 828 x 1792
+    Px,
+    /// iPhone 11 points, 414 x 896
+    Pt,
+}
+
+impl Units {
+    fn map(self, x: u16, y: u16) -> (f64, f64) {
+        let (fx, fy) = (x as f64 / 65535.0, y as f64 / 65535.0);
+        match self {
+            Units::Norm => (fx, fy),
+            Units::Px => (fx * 828.0, fy * 1792.0),
+            Units::Pt => (fx * 414.0, fy * 896.0),
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum TsMode {
+    Default,
+    Ns,
+    Mach24,
+}
+
+impl TsMode {
+    fn stamp(self) -> Option<u64> {
+        let ns = spike::epoch().elapsed().as_nanos() as u64 + 1_000_000_000;
+        let mask = (1u64 << 48) - 1;
+        match self {
+            TsMode::Default => None,
+            TsMode::Ns => Some(ns & mask),
+            TsMode::Mach24 => Some((ns * 3 / 125) & mask),
+        }
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -147,8 +222,11 @@ fn main() -> Result<()> {
                     uhs.send_touchscreen(RELEASE, x, y, None).await?;
                     println!("tapped ({x},{y}); contact send took {} us", b - a);
                 }
-                Cmd::Drag { x1, y1, x2, y2, ms, hz } => drag(&mut uhs, (x1, y1), (x2, y2), ms, hz).await?,
+                Cmd::Drag { x1, y1, x2, y2, ms, hz, ts } => drag(&mut uhs, (x1, y1), (x2, y2), ms, hz, ts).await?,
                 Cmd::Button { name, hold_ms } => button(&mut indigo, &name, hold_ms).await?,
+                Cmd::EdgeSwipe { edge, units, x1, y1, x2, y2, ms, hold_ms } => {
+                    edge_swipe(&mut indigo, edge, units, (x1, y1), (x2, y2), ms, hold_ms).await?
+                }
                 Cmd::Type { text, via } => type_text(&mut uhs, &mut indigo, &text, via).await?,
                 Cmd::Keys { chords } => {
                     for c in &chords {
@@ -187,7 +265,7 @@ fn main() -> Result<()> {
 
 /// A drag whose samples are generated and sent in real time: each CONTACT
 /// leaves the host the moment its sample time arrives, like a mouse would.
-async fn drag(uhs: &mut Uhs, from: (u16, u16), to: (u16, u16), ms: u64, hz: u32) -> Result<()> {
+async fn drag(uhs: &mut Uhs, from: (u16, u16), to: (u16, u16), ms: u64, hz: u32, ts: TsMode) -> Result<()> {
     let period = Duration::from_secs_f64(1.0 / hz as f64);
     let mut tick = tokio::time::interval(period);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -201,14 +279,14 @@ async fn drag(uhs: &mut Uhs, from: (u16, u16), to: (u16, u16), ms: u64, hz: u32)
         let x = lerp(from.0, to.0, f);
         let y = lerp(from.1, to.1, f);
         let a = now_us();
-        uhs.send_touchscreen(CONTACT, x, y, None).await?;
+        uhs.send_touchscreen(CONTACT, x, y, ts.stamp()).await?;
         sends.push(now_us() - a);
         stamps.push(a);
         if f >= 1.0 {
             break;
         }
     }
-    uhs.send_touchscreen(RELEASE, to.0, to.1, None).await?;
+    uhs.send_touchscreen(RELEASE, to.0, to.1, ts.stamp()).await?;
     let span = (stamps.last().unwrap() - stamps[0]) as f64 / 1e6;
     println!(
         "drag: {} live CONTACT samples over {:.0} ms ({:.0} Hz achieved), then RELEASE",
@@ -217,6 +295,49 @@ async fn drag(uhs: &mut Uhs, from: (u16, u16), to: (u16, u16), ms: u64, hz: u32)
         (sends.len() - 1) as f64 / span
     );
     print_pct("per-sample send call", &mut sends);
+    Ok(())
+}
+
+async fn edge_swipe(
+    indigo: &mut Indigo,
+    edge: Edge,
+    units: Units,
+    from: (u16, u16),
+    to: (u16, u16),
+    ms: u64,
+    hold_ms: u64,
+) -> Result<()> {
+    use idevice::core_device::{DigitizerEdge as E, DigitizerEventType as T, DigitizerTarget};
+    let e = match edge {
+        Edge::None => E::None,
+        Edge::Top => E::Top,
+        Edge::Left => E::Left,
+        Edge::Bottom => E::Bottom,
+        Edge::Right => E::Right,
+    };
+    let send = |p: (u16, u16)| units.map(p.0, p.1);
+    let mut tick = tokio::time::interval(Duration::from_millis(8));
+    let steps = (ms / 8).max(2);
+    indigo.send_digitizer(send(from), None, T::Start, e, DigitizerTarget::MainScreen).await?;
+    for i in 1..steps {
+        tick.tick().await;
+        let f = i as f64 / steps as f64;
+        let p = (lerp(from.0, to.0, f), lerp(from.1, to.1, f));
+        indigo.send_digitizer(send(p), None, T::Position, e, DigitizerTarget::MainScreen).await?;
+    }
+    // Holding still: keep reporting the same position, as a resting finger would.
+    let hold_until = tokio::time::Instant::now() + Duration::from_millis(hold_ms);
+    while tokio::time::Instant::now() < hold_until {
+        tick.tick().await;
+        indigo.send_digitizer(send(to), None, T::Position, e, DigitizerTarget::MainScreen).await?;
+    }
+    tick.tick().await;
+    indigo.send_digitizer(send(to), None, T::End, e, DigitizerTarget::MainScreen).await?;
+    let (a, b) = (send(from), send(to));
+    println!(
+        "IndigoDigitizerEvent edge swipe: start ({:.3},{:.3}) -> end ({:.3},{:.3}), {} positions over ~{ms} ms, held {hold_ms} ms",
+        a.0, a.1, b.0, b.1, steps - 1
+    );
     Ok(())
 }
 
