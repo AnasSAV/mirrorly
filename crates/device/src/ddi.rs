@@ -23,10 +23,7 @@ const FILES: [&str; 5] = [
 ];
 
 pub fn cache_dir() -> PathBuf {
-    let base = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("iphone-mirror").join("ddi-cryptex")
+    crate::paths::data_dir().join("ddi-cryptex")
 }
 
 pub async fn installed(t: &mut Tunnel) -> Result<Option<InstalledCryptex>> {

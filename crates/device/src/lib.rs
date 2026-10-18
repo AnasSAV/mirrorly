@@ -7,6 +7,7 @@ pub mod ddi;
 pub mod feedback;
 pub mod hid;
 pub mod media;
+pub mod paths;
 pub mod session;
 pub mod wifi;
 

@@ -24,6 +24,10 @@ pub enum HidEvent {
     Key { usage: u16, down: bool },
     /// Scripted bottom-edge swipe-and-hold that opens the App Switcher.
     AppSwitcher,
+    /// Mouse-wheel scroll: a short finger drag from (x, y) moving by
+    /// (dx, dy), in panel units (0..1), held still before lifting so the
+    /// content scrolls without flinging.
+    Scroll { x: u16, y: u16, dx: f64, dy: f64 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

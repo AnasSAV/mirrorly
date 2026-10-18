@@ -417,6 +417,11 @@ async fn read_info(provider: &NoDelayUsbmux, udid: &str) -> Result<DeviceInfo> {
         .get_value(Some("DeveloperModeStatus"), Some("com.apple.security.mac.amfi"))
         .await;
     if matches!(dev_mode, Ok(plist::Value::Boolean(false))) {
+        // The switch is hidden in Settings until a developer tool asks iOS to
+        // show it. This changes no setting; the user still turns it on.
+        if let Ok(mut amfi) = idevice::amfi::AmfiClient::connect(provider).await {
+            let _ = amfi.reveal_developer_mode_option_in_ui().await;
+        }
         bail!("Developer Mode is off: Settings > Privacy & Security > Developer Mode");
     }
     let (screen_w, screen_h) = match (screen_w, screen_h) {

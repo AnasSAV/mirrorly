@@ -189,7 +189,32 @@ fn expand(ev: HidEvent) -> Vec<(Duration, Op)> {
             ]
         }
         HidEvent::AppSwitcher => app_switcher_script(),
+        HidEvent::Scroll { x, y, dx, dy } => scroll_script(x, y, dx, dy),
     }
+}
+
+/// Wheel scroll: finger down, slide over 64 ms, rest 40 ms (kills the
+/// fling), lift.
+fn scroll_script(x: u16, y: u16, dx: f64, dy: f64) -> Vec<(Duration, Op)> {
+    const STEP_MS: u64 = 8;
+    const SLIDE_MS: u64 = 64;
+    const REST_MS: u64 = 40;
+    let at = |f: f64| {
+        let px = (x as f64 / 65535.0 + dx * f).clamp(0.0, 1.0);
+        let py = (y as f64 / 65535.0 + dy * f).clamp(0.0, 1.0);
+        ((px * 65535.0).round() as u16, (py * 65535.0).round() as u16)
+    };
+    let mut ops = vec![(Duration::ZERO, Op::Touch { contact: true, x, y })];
+    let mut t = STEP_MS;
+    while t <= SLIDE_MS {
+        let (px, py) = at(t as f64 / SLIDE_MS as f64);
+        ops.push((Duration::from_millis(t), Op::Touch { contact: true, x: px, y: py }));
+        t += STEP_MS;
+    }
+    let (ex, ey) = at(1.0);
+    ops.push((Duration::from_millis(SLIDE_MS + REST_MS), Op::Touch { contact: true, x: ex, y: ey }));
+    ops.push((Duration::from_millis(SLIDE_MS + REST_MS + STEP_MS), Op::Touch { contact: false, x: ex, y: ey }));
+    ops
 }
 
 /// Bottom-edge swipe to 30 % of the height over 400 ms, hold 800 ms,

@@ -37,15 +37,15 @@ use crate::{conn::Tunnel, session::DeviceInfo};
 
 const SERVICE_TYPE: &str = "_remotepairing._tcp.local.";
 
-/// Name this PC gives itself in the pairing record.
+/// Name this PC gives itself in the pairing record. Kept as-is across the
+/// rename to Mirrorly: existing records were made with it.
 pub fn hostname() -> String {
     let pc = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "pc".into());
     format!("iphone-mirror-{pc}")
 }
 
 fn store_dir() -> PathBuf {
-    let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    base.join("iphone-mirror").join("wifi")
+    crate::paths::data_dir().join("wifi")
 }
 
 fn record_path(udid: &str) -> PathBuf {
