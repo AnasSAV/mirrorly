@@ -51,6 +51,7 @@ impl Welcome {
 fn step_for(ev: &DeviceEvent) -> Option<usize> {
     match ev {
         DeviceEvent::Connected(_) => Some(3),
+        DeviceEvent::Clipboard(_) => None,
         // The routine "Connecting…" says nothing new; later progress means
         // every prerequisite is met.
         DeviceEvent::Status(s) if s.starts_with("Connecting…") => None,

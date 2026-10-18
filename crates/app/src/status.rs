@@ -15,7 +15,7 @@ pub fn starting() -> Page {
 /// What to show for a connection event, if it changes the page.
 pub fn describe(ev: &DeviceEvent) -> Option<Page> {
     match ev {
-        DeviceEvent::Connected(_) => None,
+        DeviceEvent::Connected(_) | DeviceEvent::Clipboard(_) => None,
         DeviceEvent::Status(s) => Some(progress(s)),
         DeviceEvent::Disconnected(reason) => Some(problem(reason)),
     }

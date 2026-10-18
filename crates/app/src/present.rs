@@ -169,18 +169,21 @@ pub fn spawn(
             // Window chrome: hover bar (above the screen), status or welcome
             // page (no video), stats.
             let bar_rect = shared.view.lock().unwrap().bar();
-            let (bar, status, welcome) = {
+            let (bar, status, welcome, shelf, drop_hover, toast) = {
                 let c = shared.chrome.lock().unwrap();
-                let bar = bar_rect.map(|b| (layout::toolbar(b, c.scale.max(1.0)), c.hover));
+                let bar = bar_rect.map(|b| (layout::toolbar(b, c.scale.max(1.0), c.shelf.is_some()), c.hover));
                 let status = frame.is_none().then(|| c.status.clone());
                 let welcome = if frame.is_none() { c.welcome.clone() } else { None };
-                (bar, status, welcome)
+                (bar, status, welcome, c.shelf.clone(), c.drop_hover, c.toast.clone())
             };
             let ui_frame = UiFrame {
                 view: scene_view,
                 toolbar: bar,
                 status: status.as_ref().map(|(t, d)| (t.as_str(), d.as_str())),
                 welcome: welcome.as_ref(),
+                shelf: shelf.as_ref(),
+                drop_hover,
+                toast: toast.as_deref(),
                 stats: overlay_text.as_deref(),
             };
             let presented = {

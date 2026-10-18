@@ -93,6 +93,15 @@ impl View {
     }
 }
 
+/// Photos or files copied on the iPhone, waiting on the bar to be dragged
+/// out.
+#[derive(Debug, Clone)]
+pub struct Shelf {
+    pub label: String,
+    /// Only photos and videos (picks the chip's icon).
+    pub media: bool,
+}
+
 /// Window chrome state, written by the main thread, drawn by the present
 /// thread.
 #[derive(Debug, Default)]
@@ -106,6 +115,11 @@ pub struct Chrome {
     pub welcome: Option<Welcome>,
     /// DPI scale of the window.
     pub scale: f64,
+    pub shelf: Option<Shelf>,
+    /// Files from the PC are being dragged over the window.
+    pub drop_hover: bool,
+    /// A short message at the bottom of the screen (file transfer).
+    pub toast: Option<String>,
 }
 
 #[derive(Default)]

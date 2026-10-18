@@ -9,10 +9,15 @@
 //! rounded corners, a bar that appears when the pointer nears the top
 //! (window buttons, Home, App Switcher, Rotate), and a status page when
 //! there is nothing to show.
+//!
+//! Files move through the iPhone's clipboard: copy photos or files on the
+//! iPhone and a chip on the bar can be dragged out to Windows; drop PC files
+//! on the window and they are pasted into the app open on the iPhone.
 
 // Release builds are a GUI app: no console window (logs go to a file).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod drag;
 mod gpu;
 mod layout;
 mod metrics;
@@ -32,7 +37,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
-use device::{DeviceEvent, DeviceHandle, RctlMode};
+use device::{DeviceEvent, DeviceHandle, RctlMode, clipboard::ClipEvent};
 use input::{Button, HidEvent, gesture::Gesture, keys::hid_usage};
 use video::{D3dLock, FrameSlot};
 use winit::{
@@ -48,7 +53,7 @@ use winit::{
 
 use crate::{
     layout::Control,
-    state::{Indicator, Shared},
+    state::{Indicator, Shared, Shelf},
 };
 
 #[derive(Parser, Debug)]
@@ -169,6 +174,11 @@ struct App {
     hide_bar_at: Option<Instant>,
     scroll_busy_until: Instant,
     scroll_pending: f64,
+    /// Fetched from the iPhone's clipboard, offered on the bar's chip.
+    shelf_files: Vec<std::path::PathBuf>,
+    /// Files dropped on the window, sent together once the drop is over.
+    dropped: Vec<std::path::PathBuf>,
+    toast_until: Option<Instant>,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
@@ -353,7 +363,84 @@ impl App {
             Control::Rotate => self.rotate(true),
             Control::AppSwitcher => self.send(HidEvent::AppSwitcher),
             Control::Home => self.send(HidEvent::Button { button: Button::Home }),
+            Control::Shelf => self.drag_shelf(),
         }
+    }
+
+    /// Drag what was copied on the iPhone out of the window (runs the
+    /// system's drag loop until the drop).
+    fn drag_shelf(&mut self) {
+        let files: Vec<_> = self.shelf_files.iter().filter(|f| f.exists()).cloned().collect();
+        if files.is_empty() {
+            self.toast("Copy it on the iPhone again", 3.0);
+            return;
+        }
+        match drag::drag_files(self.hwnd, &files) {
+            Ok(dropped) => tracing::info!("dragged {} file(s) out (dropped: {dropped})", files.len()),
+            Err(e) => {
+                tracing::warn!("drag out failed: {e:#}");
+                self.toast("Couldn't start the drag", 3.0);
+            }
+        }
+        // The drag loop swallowed the button release and pointer moves.
+        self.cursor_inside = false;
+        self.update_hover();
+    }
+
+    /// A short message at the bottom of the screen.
+    fn toast(&mut self, text: impl Into<String>, secs: f64) {
+        self.shared.chrome.lock().unwrap().toast = Some(text.into());
+        self.toast_until = Some(Instant::now() + Duration::from_secs_f64(secs));
+        self.slot.request_redraw();
+    }
+
+    fn clipboard(&mut self, ev: ClipEvent) {
+        match ev {
+            ClipEvent::Fetching(n) => {
+                let what = if n == 1 { "1 item".to_string() } else { format!("{n} items") };
+                self.toast(format!("Copying {what} from iPhone…"), 120.0);
+            }
+            ClipEvent::Copied(files) => {
+                let shelf = shelf_for(&files);
+                self.toast(format!("{} copied · drag it from the bar", shelf.label), 4.0);
+                self.shared.chrome.lock().unwrap().shelf = Some(shelf);
+                self.shelf_files = files;
+                self.slot.request_redraw();
+            }
+            ClipEvent::Sent { pasted, saved, place } => {
+                let count = |n: usize| if n == 1 { "1 file".to_string() } else { format!("{n} files") };
+                let text = match (pasted, saved, place) {
+                    (0, s, Some(place)) if s > 0 => format!("Saved {} to {place}", count(s)),
+                    (p, _, _) if p > 0 => format!("Pasted {} on iPhone", count(p)),
+                    _ => "On the iPhone's clipboard: touch and hold, then Paste".into(),
+                };
+                self.toast(text, if saved > 0 { 6.0 } else { 3.0 });
+            }
+            ClipEvent::Failed(why) => {
+                let w = why.to_ascii_lowercase();
+                let text = if w.contains("folders") || w.contains("too large") {
+                    why
+                } else if w.contains("no longer has") {
+                    "The iPhone's clipboard changed; copy it again".into()
+                } else {
+                    "Couldn't reach the iPhone's clipboard".into()
+                };
+                self.toast(text, 5.0);
+            }
+        }
+    }
+
+    /// Files dropped on the window go to the iPhone.
+    fn send_dropped(&mut self) {
+        let files = std::mem::take(&mut self.dropped);
+        let Some(d) = self.device.as_ref().filter(|_| self.link.is_some()) else {
+            self.toast("Connect your iPhone first", 3.0);
+            return;
+        };
+        tracing::info!("sending {} dropped file(s) to the iPhone", files.len());
+        let what = if files.len() == 1 { "1 file".to_string() } else { format!("{} files", files.len()) };
+        d.paste_files(files);
+        self.toast(format!("Sending {what} to iPhone…"), 120.0);
     }
 
     fn quit(&mut self, el: &ActiveEventLoop) {
@@ -444,7 +531,8 @@ impl App {
     /// The hover bar's controls, when it is shown.
     fn toolbar(&self) -> Option<layout::Toolbar> {
         let bar = self.shared.view.lock().unwrap().bar()?;
-        Some(layout::toolbar(bar, self.scale()))
+        let shelf = self.shared.chrome.lock().unwrap().shelf.is_some();
+        Some(layout::toolbar(bar, self.scale(), shelf))
     }
 
     /// Show or hide the bar. Like macOS, it is a strip above the phone
@@ -534,21 +622,30 @@ impl App {
 }
 
 impl ApplicationHandler<UserEvent> for App {
-    /// Timers: hide the bar a moment after the pointer left.
+    /// Finish a file drop; timers: hide the bar a moment after the pointer
+    /// left, clear transfer messages.
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
         use winit::event_loop::ControlFlow;
-        match self.hide_bar_at {
-            Some(t) if Instant::now() >= t => {
-                self.hide_bar_at = None;
-                if !self.cursor_inside && !self.gesture.active() {
-                    self.set_bar(false);
-                    self.update_hover();
-                }
-                el.set_control_flow(ControlFlow::Wait);
-            }
-            Some(t) => el.set_control_flow(ControlFlow::WaitUntil(t)),
-            None => el.set_control_flow(ControlFlow::Wait),
+        if !self.dropped.is_empty() {
+            self.send_dropped();
         }
+        let now = Instant::now();
+        if self.hide_bar_at.is_some_and(|t| now >= t) {
+            self.hide_bar_at = None;
+            if !self.cursor_inside && !self.gesture.active() {
+                self.set_bar(false);
+                self.update_hover();
+            }
+        }
+        if self.toast_until.is_some_and(|t| now >= t) {
+            self.toast_until = None;
+            self.shared.chrome.lock().unwrap().toast = None;
+            self.slot.request_redraw();
+        }
+        el.set_control_flow(match [self.hide_bar_at, self.toast_until].into_iter().flatten().min() {
+            Some(t) => ControlFlow::WaitUntil(t),
+            None => ControlFlow::Wait,
+        });
     }
 
     fn resumed(&mut self, el: &ActiveEventLoop) {
@@ -573,6 +670,7 @@ impl ApplicationHandler<UserEvent> for App {
         self.slot.request_redraw();
         match ev {
             DeviceEvent::Status(_) => {}
+            DeviceEvent::Clipboard(c) => self.clipboard(c),
             DeviceEvent::Connected(info) => {
                 // First connection done: the welcome checklist retires.
                 if self.shared.chrome.lock().unwrap().welcome.take().is_some() {
@@ -618,6 +716,27 @@ impl ApplicationHandler<UserEvent> for App {
                 self.shared.view.lock().unwrap().bezel = BEZEL * scale_factor;
             }
             WindowEvent::Focused(false) => self.release_all(),
+            // Our own shelf being dragged out passes over the window first:
+            // those files came from the iPhone and must not go back.
+            WindowEvent::HoveredFile(path) if is_from_iphone(&path) => {}
+            WindowEvent::DroppedFile(path) if is_from_iphone(&path) => {}
+            WindowEvent::HoveredFile(_) => {
+                let mut c = self.shared.chrome.lock().unwrap();
+                if !c.drop_hover {
+                    c.drop_hover = true;
+                    drop(c);
+                    self.slot.request_redraw();
+                }
+            }
+            WindowEvent::HoveredFileCancelled => {
+                self.shared.chrome.lock().unwrap().drop_hover = false;
+                self.slot.request_redraw();
+            }
+            WindowEvent::DroppedFile(path) => {
+                self.shared.chrome.lock().unwrap().drop_hover = false;
+                self.slot.request_redraw();
+                self.dropped.push(path);
+            }
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             WindowEvent::CursorEntered { .. } => {
                 self.cursor_inside = true;
@@ -776,6 +895,35 @@ impl ApplicationHandler<UserEvent> for App {
     }
 }
 
+/// A file Mirrorly fetched from the iPhone's clipboard.
+fn is_from_iphone(path: &std::path::Path) -> bool {
+    // Windows paths compare case-insensitively.
+    let lower = |p: &std::path::Path| p.to_string_lossy().to_lowercase();
+    lower(path).starts_with(&lower(&device::clipboard::inbox()))
+}
+
+/// The bar chip for files fetched from the iPhone: the name for one file,
+/// else a count ("3 photos").
+fn shelf_for(files: &[std::path::PathBuf]) -> Shelf {
+    let ext = |f: &std::path::PathBuf| f.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    let is_video = |f: &std::path::PathBuf| matches!(ext(f).as_str(), "mov" | "mp4");
+    let is_photo = |f: &std::path::PathBuf| matches!(ext(f).as_str(), "jpg" | "jpeg" | "png" | "heic" | "gif" | "webp" | "tiff");
+    let media = files.iter().all(|f| is_photo(f) || is_video(f));
+    let n = files.len();
+    let label = if n == 1 && !media {
+        files[0].file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "1 file".into())
+    } else if files.iter().all(is_photo) {
+        if n == 1 { "Photo".into() } else { format!("{n} photos") }
+    } else if files.iter().all(is_video) {
+        if n == 1 { "Video".into() } else { format!("{n} videos") }
+    } else if media {
+        format!("{n} items")
+    } else {
+        format!("{n} files")
+    };
+    Shelf { label, media }
+}
+
 /// Top of the work area (excluding the taskbar) of the window's monitor.
 fn work_area_top(hwnd: isize) -> i32 {
     use windows::Win32::{
@@ -858,6 +1006,9 @@ fn main() -> Result<()> {
         hide_bar_at: None,
         scroll_busy_until: Instant::now(),
         scroll_pending: 0.0,
+        shelf_files: Vec::new(),
+        dropped: Vec::new(),
+        toast_until: None,
         threads: Vec::new(),
     };
     event_loop.run_app(&mut app)?;

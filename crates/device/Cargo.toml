@@ -14,5 +14,7 @@ uuid.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 input.workspace = true
+# Local time for the names of photos fetched from the phone.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 mdns-sd.workspace = true

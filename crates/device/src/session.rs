@@ -18,6 +18,7 @@ use input::HidEvent;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
+    clipboard::{self, ClipCmd, ClipEvent},
     conn::{NoDelayUsbmux, open_tunnel, usb_device},
     ddi,
     feedback::{self, Feedback, RctlMode},
@@ -52,6 +53,8 @@ pub enum DeviceEvent {
     Status(String),
     Connected(DeviceInfo),
     Disconnected(String),
+    /// File transfer through the iPhone's clipboard.
+    Clipboard(ClipEvent),
 }
 
 /// Receives the video RTP stream on the network thread. Must be quick:
@@ -94,6 +97,7 @@ pub struct Options {
 
 pub struct DeviceHandle {
     hid_tx: mpsc::UnboundedSender<Stamped>,
+    clip_tx: mpsc::UnboundedSender<ClipCmd>,
     pub keyframes: KeyframeRequester,
     pub hid_stats: Arc<HidStats>,
     _thread: std::thread::JoinHandle<()>,
@@ -103,6 +107,12 @@ impl DeviceHandle {
     /// Queue an input event; never blocks.
     pub fn send(&self, t_us: u64, ev: HidEvent) {
         let _ = self.hid_tx.send((t_us, ev));
+    }
+
+    /// Put PC files on the iPhone's clipboard and paste them into the open
+    /// app. Ignored while disconnected.
+    pub fn paste_files(&self, files: Vec<std::path::PathBuf>) {
+        let _ = self.clip_tx.send(ClipCmd::Paste(files));
     }
 
     /// A cloneable sender for other threads (e.g. a latency probe).
@@ -126,9 +136,16 @@ pub fn start<S: MediaSink>(
     opts: Options,
 ) -> Result<DeviceHandle> {
     let (hid_tx, hid_rx) = mpsc::unbounded_channel();
+    let (clip_tx, clip_rx) = mpsc::unbounded_channel();
     let keyframes = KeyframeRequester::default();
     let hid_stats = Arc::new(HidStats::default());
     let (kf, stats) = (keyframes.clone(), hid_stats.clone());
+    let on_event: Events = Arc::new(on_event);
+    let chans = Channels {
+        hid_rx: Arc::new(tokio::sync::Mutex::new(hid_rx)),
+        hid_tx: hid_tx.clone(),
+        clip_rx: Arc::new(tokio::sync::Mutex::new(clip_rx)),
+    };
     let thread = std::thread::Builder::new().name("network".into()).spawn(move || {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -136,30 +153,42 @@ pub fn start<S: MediaSink>(
             .enable_all()
             .build()
             .expect("tokio runtime");
-        rt.block_on(session_loop(sink, on_event, opts, hid_rx, kf, stats));
+        rt.block_on(session_loop(sink, on_event, opts, chans, kf, stats));
     })?;
-    Ok(DeviceHandle { hid_tx, keyframes, hid_stats, _thread: thread })
+    Ok(DeviceHandle { hid_tx, clip_tx, keyframes, hid_stats, _thread: thread })
+}
+
+type Events = Arc<dyn Fn(DeviceEvent) + Send + Sync>;
+
+/// Queues from the window into the network thread, kept across sessions.
+struct Channels {
+    hid_rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<Stamped>>>,
+    /// For work on the network thread that types on the phone (paste).
+    hid_tx: mpsc::UnboundedSender<Stamped>,
+    clip_rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<ClipCmd>>>,
 }
 
 async fn session_loop<S: MediaSink>(
     sink: S,
-    on_event: impl Fn(DeviceEvent),
+    events: Events,
     opts: Options,
-    hid_rx: mpsc::UnboundedReceiver<Stamped>,
+    chans: Channels,
     keyframes: KeyframeRequester,
     stats: Arc<HidStats>,
 ) {
-    let hid_rx = Arc::new(tokio::sync::Mutex::new(hid_rx));
+    let on_event = |e: DeviceEvent| events(e);
+    let hid_rx = chans.hid_rx.clone();
     let mut sink = sink;
     loop {
         on_event(DeviceEvent::Status("Connecting…".into()));
-        let (s, reason) = run_once(sink, &on_event, &opts, &hid_rx, &keyframes, &stats).await;
+        let (s, reason) = run_once(sink, &on_event, &events, &opts, &chans, &keyframes, &stats).await;
         sink = s;
         *keyframes.0.lock().unwrap() = None;
         tracing::warn!("session ended: {reason}");
         on_event(DeviceEvent::Disconnected(reason));
         // Input typed while disconnected must not replay on reconnect.
         while hid_rx.lock().await.try_recv().is_ok() {}
+        while chans.clip_rx.lock().await.try_recv().is_ok() {}
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 }
@@ -177,8 +206,9 @@ struct Prepared {
 async fn run_once<S: MediaSink>(
     mut sink: S,
     on_event: &impl Fn(DeviceEvent),
+    events: &Events,
     opts: &Options,
-    hid_rx: &Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<Stamped>>>,
+    chans: &Channels,
     keyframes: &KeyframeRequester,
     stats: &Arc<HidStats>,
 ) -> (S, String) {
@@ -205,7 +235,7 @@ async fn run_once<S: MediaSink>(
             }
         }
         Ok((uhs, indigo)) => {
-            let (rx_q, stats2, now_us) = (hid_rx.clone(), stats.clone(), opts.now_us);
+            let (rx_q, stats2, now_us) = (chans.hid_rx.clone(), stats.clone(), opts.now_us);
             // Over Wi-Fi, iOS ignores universalhidservice touch reports but
             // accepts Indigo digitizer events (measured 2026-10-18: a tap on
             // Settings did nothing via UHS, opened it via Indigo; drags work).
@@ -223,9 +253,26 @@ async fn run_once<S: MediaSink>(
                 while rx.try_recv().is_ok() {}
                 hid::run(uhs, indigo, &mut rx, now_us, stats2, touch_path).await
             });
+            // Clipboard file transfer, on its own connection to the phone.
+            let clip_task = {
+                let ev = events.clone();
+                let bridge = clipboard::Bridge::new(
+                    tunnel.adapter.clone(),
+                    tunnel.handshake.clone(),
+                    chans.hid_tx.clone(),
+                    now_us,
+                    move |c| ev(DeviceEvent::Clipboard(c)),
+                );
+                let q = chans.clip_rx.clone();
+                tokio::spawn(async move {
+                    let mut rx = q.lock().await;
+                    while rx.try_recv().is_ok() {}
+                    bridge.run(&mut rx).await
+                })
+            };
             let on_wifi = info.transport == Transport::Wifi;
             on_event(DeviceEvent::Connected(info));
-            tokio::select! {
+            let ended = tokio::select! {
                 r = &mut rx_task => {
                     hid_task.abort();
                     r.expect("receive task panicked")
@@ -246,7 +293,9 @@ async fn run_once<S: MediaSink>(
                     };
                     (s, reason)
                 }
-            }
+            };
+            clip_task.abort();
+            ended
         }
     };
     let mut sink = sink;

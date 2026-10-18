@@ -1,6 +1,7 @@
 //! Window chrome drawn over the picture with Direct2D/DirectWrite: the hover
-//! bar (traffic lights + Home / App Switcher / Rotate), the status page shown
-//! when there is no video, and the stats overlay. Same D3D11 device and lock
+//! bar (traffic lights + Home / App Switcher / Rotate, and the shelf chip for
+//! things copied on the iPhone), the status page shown when there is no
+//! video, the file drop target, transfer messages and the stats overlay. Same D3D11 device and lock
 //! as the video draw; only drawn when something is visible.
 
 use anyhow::Result;
@@ -19,7 +20,8 @@ use windows::{
             DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_WEIGHT, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_MEASURING_MODE_NATURAL,
             DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, DWRITE_TEXT_ALIGNMENT_CENTER,
-            DWRITE_TEXT_ALIGNMENT_LEADING, DWriteCreateFactory, IDWriteFactory, IDWriteTextFormat,
+            DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_TRIMMING, DWRITE_TRIMMING_GRANULARITY_CHARACTER,
+            DWRITE_WORD_WRAPPING_NO_WRAP, DWriteCreateFactory, IDWriteFactory, IDWriteTextFormat,
         },
         Dxgi::{Common::DXGI_FORMAT_B8G8R8A8_UNORM, IDXGIDevice, IDXGISurface, IDXGISwapChain2},
     },
@@ -29,6 +31,7 @@ use windows::{
 use crate::{
     layout::{Control, Toolbar},
     onboarding::{STEPS, StepState, Welcome},
+    state::Shelf,
 };
 
 /// One frame's worth of chrome.
@@ -40,12 +43,17 @@ pub struct UiFrame<'a> {
     pub status: Option<(&'a str, &'a str)>,
     /// First-run checklist (drawn instead of the plain status page).
     pub welcome: Option<&'a Welcome>,
+    /// Chip on the bar for what was copied on the iPhone.
+    pub shelf: Option<&'a Shelf>,
+    /// Files are being dragged over the window.
+    pub drop_hover: bool,
+    pub toast: Option<&'a str>,
     pub stats: Option<&'a str>,
 }
 
 impl UiFrame<'_> {
     pub fn is_empty(&self) -> bool {
-        self.toolbar.is_none() && self.status.is_none() && self.stats.is_none()
+        self.toolbar.is_none() && self.status.is_none() && self.stats.is_none() && !self.drop_hover && self.toast.is_none()
     }
 }
 
@@ -62,6 +70,8 @@ pub struct Ui {
     step_detail: IDWriteTextFormat,
     step_num: IDWriteTextFormat,
     step_icon: IDWriteTextFormat,
+    chip: IDWriteTextFormat,
+    toast: IDWriteTextFormat,
     brush: ID2D1SolidColorBrush,
     target: Option<ID2D1Bitmap1>,
     scale: f32,
@@ -73,6 +83,9 @@ const GLYPH_SWITCHER: &str = "\u{E7C4}";
 const GLYPH_ROTATE: &str = "\u{E7AD}";
 const GLYPH_PHONE: &str = "\u{E8EA}";
 const GLYPH_CHECK: &str = "\u{E73E}";
+const GLYPH_PHOTO: &str = "\u{EB9F}";
+const GLYPH_DOCUMENT: &str = "\u{E8A5}";
+const GLYPH_PASTE: &str = "\u{E77F}";
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> D2D1_COLOR_F {
     D2D1_COLOR_F { r, g, b, a }
@@ -101,6 +114,15 @@ impl Ui {
             let step_detail = fmt(w!("Segoe UI Variable Text"), DWRITE_FONT_WEIGHT_NORMAL, 12.0)?;
             let step_num = fmt(w!("Segoe UI Variable Text"), DWRITE_FONT_WEIGHT_SEMI_BOLD, 11.5)?;
             let step_icon = fmt(icon_family, DWRITE_FONT_WEIGHT_NORMAL, 11.0)?;
+            let chip = fmt(w!("Segoe UI Variable Text"), DWRITE_FONT_WEIGHT_SEMI_BOLD, 12.0)?;
+            let toast = fmt(w!("Segoe UI Variable Text"), DWRITE_FONT_WEIGHT_NORMAL, 12.5)?;
+            chip.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING)?;
+            chip.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+            chip.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)?;
+            let trim = DWRITE_TRIMMING { granularity: DWRITE_TRIMMING_GRANULARITY_CHARACTER, delimiter: 0, delimiterCount: 0 };
+            chip.SetTrimming(&trim, None)?;
+            toast.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
+            toast.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
             for f in [&title, &body, &icons, &big_icon, &light_glyph, &heading, &step_num, &step_icon] {
                 f.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
                 f.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
@@ -124,6 +146,8 @@ impl Ui {
                 step_detail,
                 step_num,
                 step_icon,
+                chip,
+                toast,
                 brush,
                 target: None,
                 scale,
@@ -162,6 +186,15 @@ impl Ui {
             }
             if let Some((tb, hover)) = &f.toolbar {
                 self.toolbar(tb, *hover);
+                if let (Some(r), Some(shelf)) = (tb.shelf, f.shelf) {
+                    self.shelf_chip(r, shelf, *hover == Some(Control::Shelf));
+                }
+            }
+            if f.drop_hover {
+                self.drop_target(f.view);
+            }
+            if let Some(t) = f.toast {
+                self.toast(f.view, t);
             }
             if let Some(text) = f.stats {
                 self.stats(f.view, f.view.y, text);
@@ -221,6 +254,56 @@ impl Ui {
                 self.text(g, &self.icons, r, rgba(1.0, 1.0, 1.0, 0.95));
             }
         }
+    }
+
+    /// The copied-on-iPhone chip: press it and drag out of the window.
+    fn shelf_chip(&self, r: Rect, shelf: &Shelf, hover: bool) {
+        let s = self.scale as f64;
+        let alpha = if hover { 1.0 } else { 0.85 };
+        unsafe {
+            let rr = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: (r.h / 2.0) as f32, radiusY: (r.h / 2.0) as f32 };
+            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.30, 0.38, 0.98, alpha)));
+        }
+        let glyph = if shelf.media { GLYPH_PHOTO } else { GLYPH_DOCUMENT };
+        let icon = Rect { x: r.x + 6.0 * s, y: r.y, w: 18.0 * s, h: r.h };
+        self.text(glyph, &self.step_icon, icon, rgba(1.0, 1.0, 1.0, 1.0));
+        let label = Rect { x: icon.x + icon.w + 3.0 * s, y: r.y, w: r.w - icon.w - 18.0 * s, h: r.h };
+        self.text(&shelf.label, &self.chip, label, rgba(1.0, 1.0, 1.0, 1.0));
+    }
+
+    /// Files from the PC are over the window: say what dropping does.
+    fn drop_target(&self, view: Rect) {
+        let s = self.scale as f64;
+        let radius = crate::layout::corner_radius(view) as f32;
+        unsafe {
+            let rr = D2D1_ROUNDED_RECT { rect: rect(view), radiusX: radius, radiusY: radius };
+            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.07, 0.09, 0.20, 0.78)));
+            self.ctx.DrawRoundedRectangle(&rr, self.color(rgba(0.40, 0.52, 1.0, 1.0)), (3.0 * s) as f32, None);
+        }
+        let cx = view.x + view.w / 2.0;
+        let cy = view.y + view.h * 0.45;
+        let w = view.w * 0.84;
+        self.text(GLYPH_PASTE, &self.big_icon, Rect { x: cx - 40.0 * s, y: cy - 86.0 * s, w: 80.0 * s, h: 70.0 * s }, rgba(0.55, 0.65, 1.0, 1.0));
+        self.text("Drop to paste on iPhone", &self.title, Rect { x: cx - w / 2.0, y: cy - 10.0 * s, w, h: 30.0 * s }, rgba(1.0, 1.0, 1.0, 1.0));
+        self.text(
+            "It goes into the app that is open, as if you pressed ⌘V there: a chat, a note, a Files folder.",
+            &self.body,
+            Rect { x: cx - w / 2.0, y: cy + 28.0 * s, w, h: 80.0 * s },
+            rgba(0.75, 0.77, 0.85, 1.0),
+        );
+    }
+
+    /// Transfer messages, in a pill near the bottom of the screen.
+    fn toast(&self, view: Rect, text: &str) {
+        let s = self.scale as f64;
+        let w = (view.w * 0.88).min(360.0 * s);
+        let h = 34.0 * s;
+        let r = Rect { x: view.x + (view.w - w) / 2.0, y: view.y + view.h - h - 44.0 * s, w, h };
+        unsafe {
+            let rr = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: (h / 2.0) as f32, radiusY: (h / 2.0) as f32 };
+            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.10, 0.10, 0.11, 0.92)));
+        }
+        self.text(text, &self.toast, Rect { x: r.x + 12.0 * s, w: r.w - 24.0 * s, ..r }, rgba(1.0, 1.0, 1.0, 1.0));
     }
 
     fn status_page(&self, view: Rect, title: &str, detail: &str) {
