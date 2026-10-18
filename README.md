@@ -3,9 +3,37 @@
 Low-latency iPhone screen mirroring and control for Windows, in Rust
 ("scrcpy for iPhone"). USB first, Wi-Fi later.
 
-**Status: Phase 0 (feasibility spike) done — see [FEASIBILITY.md](FEASIBILITY.md).**
-The code in `spike/` and `spike-decode/` is throwaway measurement tooling, not
-the app.
+**Status: Phase 1 (USB MVP) under test.** Phase 0 findings:
+[FEASIBILITY.md](FEASIBILITY.md). The code in `spike/` and `spike-decode/` is
+throwaway measurement tooling; the app lives in `crates/`.
+
+## Run
+
+```powershell
+target\release\iphone-mirror.exe            # add --vsync to present with vsync
+```
+
+| Input | On the phone |
+|---|---|
+| Left click / drag | Tap / swipe (touch) |
+| Drag starting at the very bottom edge | Home; drag up and pause for the App Switcher |
+| Right click | Home |
+| Keyboard | Types into the focused field; Ctrl+C/V/X/A/Z act as ⌘ shortcuts |
+| F1 / F2 / F3 / F4 / F5 (or the menu bar) | Home / App Switcher / Lock / Volume − / Volume + |
+| F12 | Flip the touch mapping for landscape video |
+
+A white dot marks a click the instant it happens and disappears when the
+phone's response arrives. The console shows connection status and a stats
+line every 5 s.
+
+## Layout
+
+| Crate | Role |
+|---|---|
+| `crates/device` | usbmuxd (TCP_NODELAY), CoreDeviceProxy tunnel, Developer Disk Image, media session, RTCP feedback, HID execution, reconnect (network thread) |
+| `crates/video` | RTP/HEVC depacketizer (marker-bit), FFmpeg d3d11va decode into textures on the app's D3D11 device (decode thread) |
+| `crates/input` | Window → panel coordinate mapping, gesture state (touch vs bottom-edge system gesture), key mapping |
+| `crates/app` | Window, DXGI flip-model swapchain, zero-copy NV12 render, present thread, menu bar |
 
 ## Requirements
 
@@ -29,11 +57,15 @@ PC (Windows 10/11 x64):
 
 ## Build
 
+The app and `spike-decode` use FFmpeg through bindgen, which needs the MSVC
+environment for the C headers:
+
 ```powershell
+cmd /c "\"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat\" && cargo build --release"
 cargo build --release -p spike            # s0..s3, no FFmpeg needed
-# s4 needs the MSVC environment for bindgen's C headers:
-cmd /c "\"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat\" && cargo build --release -p spike-decode"
 ```
+
+The build copies the FFmpeg DLLs next to `iphone-mirror.exe`.
 
 ## First run on a new phone
 
