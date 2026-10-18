@@ -6,6 +6,8 @@
 //! decode or present.
 
 mod gpu;
+mod metrics;
+mod overlay;
 mod present;
 mod render;
 mod sink;
@@ -13,7 +15,7 @@ mod state;
 
 use std::{
     collections::HashSet,
-    sync::{Arc, mpsc},
+    sync::{Arc, atomic::Ordering::Relaxed, mpsc},
     time::{Duration, Instant},
 };
 
@@ -48,6 +50,12 @@ struct Args {
     /// Do not install the Developer Disk Image automatically.
     #[arg(long)]
     no_auto_ddi: bool,
+    /// Start with the latency overlay shown (F10 toggles it).
+    #[arg(long)]
+    overlay: bool,
+    /// Write one line of stage timestamps per presented frame to this CSV.
+    #[arg(long)]
+    timings_csv: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -57,14 +65,38 @@ enum Rctl {
     Off,
 }
 
-fn epoch() -> Instant {
-    static E: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-    *E.get_or_init(Instant::now)
+/// The app epoch as both an `Instant` and a raw QueryPerformanceCounter
+/// value (read back to back), so DXGI's QPC timestamps can be put on the
+/// same µs clock as everything else.
+struct Epoch {
+    instant: Instant,
+    qpc: i64,
+    qpc_freq: i64,
+}
+
+fn epoch() -> &'static Epoch {
+    static E: std::sync::OnceLock<Epoch> = std::sync::OnceLock::new();
+    E.get_or_init(|| {
+        use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
+        let (mut qpc, mut freq) = (0i64, 0i64);
+        let instant = Instant::now();
+        unsafe {
+            let _ = QueryPerformanceCounter(&mut qpc);
+            let _ = QueryPerformanceFrequency(&mut freq);
+        }
+        Epoch { instant, qpc, qpc_freq: freq.max(1) }
+    })
 }
 
 /// µs on one QueryPerformanceCounter-backed clock shared by every thread.
 fn now_us() -> u64 {
-    epoch().elapsed().as_micros() as u64
+    epoch().instant.elapsed().as_micros() as u64
+}
+
+/// A raw QPC value (e.g. DXGI's SyncQPCTime) on the `now_us` clock.
+fn qpc_to_us(qpc: i64) -> u64 {
+    let e = epoch();
+    (((qpc - e.qpc).max(0) as i128 * 1_000_000) / e.qpc_freq as i128) as u64
 }
 
 #[link(name = "winmm")]
@@ -78,15 +110,23 @@ enum UserEvent {
     Menu(String),
 }
 
-/// Menu bar "buttons": (id, label, action).
-const BUTTONS: [(&str, &str); 6] = [
+/// Menu bar "buttons": (id, label).
+const BUTTONS: [(&str, &str); 9] = [
     ("home", "Home  (F1)"),
     ("switcher", "App Switcher  (F2)"),
     ("lock", "Lock  (F3)"),
     ("voldown", "Vol −  (F4)"),
     ("volup", "Vol +  (F5)"),
     ("rotate", "Rotate ⟳  (F12, Shift+F12 ⟲)"),
+    ("stats", "Stats  (F10)"),
+    ("probe", "Latency probe  (F9)"),
+    ("fullscreen", "Fullscreen  (F11)"),
 ];
+
+/// Probe taps: count, pause before each (screen must be still), hold.
+const PROBE_TAPS: u32 = 10;
+const PROBE_GAP: Duration = Duration::from_millis(1200);
+const PROBE_HOLD: Duration = Duration::from_millis(80);
 
 struct App {
     args: Args,
@@ -158,12 +198,23 @@ impl App {
 
         let lock = Arc::new(D3dLock::default());
         let dpi = window.scale_factor();
+        let csv = match &self.args.timings_csv {
+            Some(path) => Some(spawn_csv_logger(path)?),
+            None => None,
+        };
+        self.shared.overlay.store(self.args.overlay, Relaxed);
         self.threads.push(present::spawn(
             present::SendRenderer(renderer),
             self.slot.clone(),
             self.shared.clone(),
             lock.clone(),
-            present::PresentOpts { vsync: self.args.vsync, dot_radius: 14.0 * dpi },
+            present::PresentOpts {
+                vsync: self.args.vsync,
+                dot_radius: 14.0 * dpi,
+                dpi_scale: dpi as f32,
+                csv,
+                qpc_to_us,
+            },
             now_us,
         )?);
 
@@ -172,12 +223,15 @@ impl App {
         // it exists (it is created below); until then there is nothing to ask.
         let decoder_kf: Arc<std::sync::Mutex<Option<device::KeyframeRequester>>> = Arc::default();
         let decoder_kf2 = decoder_kf.clone();
+        let shared = self.shared.clone();
         self.threads.push(video::spawn_decoder(
             gpu.device.clone(),
             lock,
             au_rx,
             self.slot.clone(),
             move || {
+                shared.counters.decode_errors.fetch_add(1, Relaxed);
+                shared.counters.keyframe_requests.fetch_add(1, Relaxed);
                 if let Some(k) = decoder_kf2.lock().unwrap().as_ref() {
                     k.request();
                 }
@@ -192,7 +246,7 @@ impl App {
             Rctl::Off => RctlMode::Off,
         };
         let handle = device::start(
-            sink::VideoSink::new(au_tx),
+            sink::VideoSink::new(au_tx, self.shared.clone()),
             move |ev| {
                 let _ = proxy.send_event(UserEvent::Device(ev));
             },
@@ -204,6 +258,7 @@ impl App {
             },
         )?;
         *decoder_kf.lock().unwrap() = Some(handle.keyframes.clone());
+        *self.shared.hid_stats.lock().unwrap() = Some(handle.hid_stats.clone());
         self.device = Some(handle);
         self._menu = Some(menu);
         self.window = Some(window);
@@ -238,6 +293,20 @@ impl App {
             "lock" => self.send(HidEvent::Button { button: Button::Lock }),
             "voldown" => self.send(HidEvent::Button { button: Button::VolumeDown }),
             "volup" => self.send(HidEvent::Button { button: Button::VolumeUp }),
+            "stats" => {
+                let on = !self.shared.overlay.load(Relaxed);
+                self.shared.overlay.store(on, Relaxed);
+                self.slot.request_redraw();
+            }
+            "probe" => self.start_probe(),
+            "fullscreen" => {
+                // Borderless fullscreen lets DWM hand the swapchain to the
+                // display directly (independent flip) instead of composing.
+                if let Some(w) = &self.window {
+                    let full = w.fullscreen().is_some();
+                    w.set_fullscreen((!full).then_some(winit::window::Fullscreen::Borderless(None)));
+                }
+            }
             "rotate" | "rotate-ccw" => {
                 // Turn the picture a quarter turn; touches follow through
                 // the same mapping. Swap the window's shape to match.
@@ -256,6 +325,38 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// F9: tap the phone `PROBE_TAPS` times where the mouse points, each on a
+    /// still screen, and time every tap until its response frame is
+    /// presented (results in the overlay and the log). Point it at
+    /// something that visibly reacts to a touch, e.g. a Calculator key.
+    fn start_probe(&self) {
+        let (m, _) = self.mapper();
+        let Some(p) = m.to_panel(self.cursor.0, self.cursor.1, false) else {
+            tracing::warn!("latency probe: put the mouse over the phone picture first");
+            return;
+        };
+        let Some(dev) = &self.device else { return };
+        let (sender, shared, slot) = (dev.sender(), self.shared.clone(), self.slot.clone());
+        let (x, y) = (input::geom::to_u16(p.0), input::geom::to_u16(p.1));
+        tracing::info!("latency probe: {PROBE_TAPS} taps at ({x}, {y})");
+        shared.overlay.store(true, Relaxed);
+        let _ = std::thread::Builder::new().name("probe".into()).spawn(move || {
+            for _ in 0..PROBE_TAPS {
+                std::thread::sleep(PROBE_GAP);
+                let t = now_us();
+                shared.view.lock().unwrap().indicator = Some(Indicator { panel: p, down_us: t, released_us: None });
+                sender.send(t, HidEvent::Touch { x, y });
+                slot.request_redraw();
+                std::thread::sleep(PROBE_HOLD);
+                sender.send(now_us(), HidEvent::Release { x, y });
+                if let Some(i) = shared.view.lock().unwrap().indicator.as_mut() {
+                    i.released_us = Some(now_us());
+                }
+            }
+            tracing::info!("latency probe done");
+        });
     }
 
     /// Lift everything the phone thinks is held (focus loss, disconnect).
@@ -392,6 +493,9 @@ impl ApplicationHandler<UserEvent> for App {
                     KeyCode::F3 => Some("lock"),
                     KeyCode::F4 => Some("voldown"),
                     KeyCode::F5 => Some("volup"),
+                    KeyCode::F9 => Some("probe"),
+                    KeyCode::F10 => Some("stats"),
+                    KeyCode::F11 => Some("fullscreen"),
                     KeyCode::F12 if self.modifiers.shift_key() => Some("rotate-ccw"),
                     KeyCode::F12 => Some("rotate"),
                     _ => None,
@@ -418,6 +522,25 @@ impl ApplicationHandler<UserEvent> for App {
             _ => {}
         }
     }
+}
+
+/// Writes frame records to a CSV on its own thread, so file I/O never sits
+/// in the present path.
+fn spawn_csv_logger(path: &std::path::Path) -> Result<mpsc::Sender<metrics::FrameRecord>> {
+    use std::io::Write;
+    let mut out = std::io::BufWriter::new(std::fs::File::create(path).with_context(|| format!("create {}", path.display()))?);
+    writeln!(out, "{}", metrics::FrameRecord::CSV_HEADER)?;
+    let (tx, rx) = mpsc::channel::<metrics::FrameRecord>();
+    std::thread::Builder::new().name("csv".into()).spawn(move || {
+        while let Ok(r) = rx.recv() {
+            if writeln!(out, "{}", r.csv()).is_err() {
+                return;
+            }
+        }
+        let _ = out.flush();
+    })?;
+    tracing::info!("writing per-frame timings to {}", path.display());
+    Ok(tx)
 }
 
 fn main() -> Result<()> {

@@ -1,8 +1,11 @@
 //! State shared between the window (main) thread and the present thread.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, atomic::AtomicBool};
 
+use device::hid::HidStats;
 use input::geom::{Mapper, Rotation, fit};
+
+use crate::metrics::Counters;
 
 /// iPhone 11 panel, used only until the phone reports its own size.
 const DEFAULT_SCREEN: (u32, u32) = (828, 1792);
@@ -66,16 +69,12 @@ impl View {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct PresentStats {
-    pub presented: u64,
-    pub last_present_us: u64,
-    /// last packet received -> Present() returned, µs, for the latest frame.
-    pub last_rx_to_present_us: u64,
-}
-
 #[derive(Default)]
 pub struct Shared {
     pub view: Mutex<View>,
-    pub stats: Mutex<PresentStats>,
+    /// Debug overlay on/off (F10).
+    pub overlay: AtomicBool,
+    pub counters: Counters,
+    /// The current session's input statistics, once a device is running.
+    pub hid_stats: Mutex<Option<Arc<HidStats>>>,
 }

@@ -80,7 +80,7 @@ struct QuadCb {
 }
 
 pub struct Renderer {
-    device: ID3D11Device,
+    pub device: ID3D11Device,
     context: ID3D11DeviceContext,
     pub swapchain: Swapchain,
     rtv: Option<ID3D11RenderTargetView>,
