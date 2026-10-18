@@ -1,0 +1,23 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "iPhone mirror window: D3D11 flip-model presentation and input wiring"
+
+[[bin]]
+name = "iphone-mirror"
+path = "src/main.rs"
+
+[dependencies]
+device.workspace = true
+video.workspace = true
+input.workspace = true
+winit.workspace = true
+windows.workspace = true
+muda.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

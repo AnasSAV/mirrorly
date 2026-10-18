@@ -14,4 +14,4 @@ uuid.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 tracing-subscriber.workspace = true
-winit = "=0.30.13"
+winit.workspace = true

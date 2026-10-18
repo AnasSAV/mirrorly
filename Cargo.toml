@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["spike", "spike-decode"]
+members = ["crates/*", "spike", "spike-decode"]
+default-members = ["crates/app"]
 
 [workspace.package]
 edition = "2024"
@@ -20,13 +21,34 @@ idevice = { version = "=0.1.68", default-features = false, features = [
   "tss",
   "mobile_image_mounter",
   "amfi",
+  "springboardservices",
 ] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync", "fs", "io-util"] }
 plist = "1.8"
 uuid = { version = "1", features = ["v4"] }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+winit = "=0.30.13"
+ffmpeg-sys-next = { version = "=9.0.1", default-features = false, features = ["avcodec"] }
+muda = "=0.21.2"
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Direct3D_Fxc",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Gdi",
+  "Win32_System_Threading",
+  "Win32_System_Kernel",
+  "Win32_Media",
+] }
+
+input = { path = "crates/input" }
+device = { path = "crates/device" }
+video = { path = "crates/video" }
 
 [profile.release]
 debug = 1
