@@ -1,0 +1,16 @@
+[package]
+name = "device"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "iPhone connection, tunnel, media session, HID execution, reconnect"
+
+[dependencies]
+idevice.workspace = true
+tokio.workspace = true
+plist.workspace = true
+uuid.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+input.workspace = true
