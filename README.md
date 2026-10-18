@@ -20,11 +20,16 @@ target\release\iphone-mirror.exe            # add --vsync to present with vsync
 | Right click | Home |
 | Keyboard | Types into the focused field; Ctrl+C/V/X/A/Z act as ⌘ shortcuts |
 | F1 / F2 / F3 / F4 / F5 (or the menu bar) | Home / App Switcher / Lock / Volume − / Volume + |
-| F12 | Flip the touch mapping for landscape video |
+| F12 / Shift+F12 | Rotate the view clockwise / counter-clockwise (the phone always streams portrait; rotate for landscape apps) |
+| F10 | Latency overlay (per-stage timings, drops, tap results) |
+| F9 | Latency probe: 10 timed taps where the mouse points (aim at something that reacts, e.g. a Calculator key) |
+| F11 | Borderless fullscreen |
 
 A white dot marks a click the instant it happens and disappears when the
 phone's response arrives. The console shows connection status and a stats
-line every 5 s.
+line every 5 s. Options: `--vsync`, `--overlay`, `--timings-csv FILE`,
+`--rctl pmd3|idevice|off`, `--no-auto-ddi`. How latency is measured, and
+every result: [LATENCY.md](LATENCY.md).
 
 ## Layout
 
