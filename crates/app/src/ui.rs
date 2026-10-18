@@ -1,7 +1,7 @@
-//! Window chrome drawn over the picture with Direct2D/DirectWrite: the hover
-//! bar (traffic lights + Home / App Switcher / Rotate, and the shelf chip for
-//! things copied on the iPhone), the status page shown when there is no
-//! video, the file drop target, transfer messages and the stats overlay. Same D3D11 device and lock
+//! Window chrome drawn over the picture with Direct2D/DirectWrite: the status
+//! page shown when there is no video (and the iPhone picker), the file drop
+//! target, transfer messages and the stats overlay. The hover bar is a window
+//! of its own (bar.rs). Same D3D11 device and lock
 //! as the video draw; only drawn when something is visible.
 
 use anyhow::Result;
@@ -29,22 +29,17 @@ use windows::{
 };
 
 use crate::{
-    layout::{Control, Toolbar},
+    layout::Control,
     onboarding::{STEPS, StepState, Welcome},
-    state::Shelf,
 };
 
 /// One frame's worth of chrome.
 pub struct UiFrame<'a> {
     pub view: Rect,
-    /// Hover bar, and the control under the pointer.
-    pub toolbar: Option<(Toolbar, Option<Control>)>,
     /// Status page (title, detail) when there is no video.
     pub status: Option<(&'a str, &'a str)>,
     /// First-run checklist (drawn instead of the plain status page).
     pub welcome: Option<&'a Welcome>,
-    /// Chip on the bar for what was copied on the iPhone.
-    pub shelf: Option<&'a Shelf>,
     /// Files are being dragged over the window.
     pub drop_hover: bool,
     pub toast: Option<&'a str>,
@@ -59,7 +54,7 @@ pub struct UiFrame<'a> {
 
 impl UiFrame<'_> {
     pub fn is_empty(&self) -> bool {
-        self.toolbar.is_none() && self.status.is_none() && self.stats.is_none() && !self.drop_hover && self.toast.is_none()
+        self.status.is_none() && self.stats.is_none() && !self.drop_hover && self.toast.is_none()
     }
 }
 
@@ -70,7 +65,6 @@ pub struct Ui {
     body: IDWriteTextFormat,
     icons: IDWriteTextFormat,
     big_icon: IDWriteTextFormat,
-    light_glyph: IDWriteTextFormat,
     heading: IDWriteTextFormat,
     step_title: IDWriteTextFormat,
     step_detail: IDWriteTextFormat,
@@ -84,16 +78,9 @@ pub struct Ui {
 }
 
 // Segoe Fluent Icons / MDL2 code points.
-const GLYPH_HOME: &str = "\u{E80F}";
-const GLYPH_SWITCHER: &str = "\u{E7C4}";
-const GLYPH_ROTATE: &str = "\u{E7AD}";
 const GLYPH_PHONE: &str = "\u{E8EA}";
 const GLYPH_CHECK: &str = "\u{E73E}";
-const GLYPH_PHOTO: &str = "\u{EB9F}";
-const GLYPH_DOCUMENT: &str = "\u{E8A5}";
 const GLYPH_PASTE: &str = "\u{E77F}";
-const GLYPH_POWER: &str = "\u{E7E8}";
-const GLYPH_CONNECT: &str = "\u{E703}";
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> D2D1_COLOR_F {
     D2D1_COLOR_F { r, g, b, a }
@@ -116,7 +103,6 @@ impl Ui {
             let body = fmt(w!("Segoe UI Variable Text"), DWRITE_FONT_WEIGHT_NORMAL, 13.0)?;
             let icons = fmt(icon_family, DWRITE_FONT_WEIGHT_NORMAL, 15.0)?;
             let big_icon = fmt(icon_family, DWRITE_FONT_WEIGHT_NORMAL, 44.0)?;
-            let light_glyph = fmt(w!("Segoe UI"), DWRITE_FONT_WEIGHT_SEMI_BOLD, 9.0)?;
             let heading = fmt(w!("Segoe UI Variable Display"), DWRITE_FONT_WEIGHT_SEMI_BOLD, 21.0)?;
             let step_title = fmt(w!("Segoe UI Variable Text"), DWRITE_FONT_WEIGHT_SEMI_BOLD, 13.5)?;
             let step_detail = fmt(w!("Segoe UI Variable Text"), DWRITE_FONT_WEIGHT_NORMAL, 12.0)?;
@@ -131,7 +117,7 @@ impl Ui {
             chip.SetTrimming(&trim, None)?;
             toast.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
             toast.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
-            for f in [&title, &body, &icons, &big_icon, &light_glyph, &heading, &step_num, &step_icon] {
+            for f in [&title, &body, &icons, &big_icon, &heading, &step_num, &step_icon] {
                 f.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
                 f.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
             }
@@ -148,7 +134,6 @@ impl Ui {
                 body,
                 icons,
                 big_icon,
-                light_glyph,
                 heading,
                 step_title,
                 step_detail,
@@ -198,12 +183,6 @@ impl Ui {
                 }
                 _ => {}
             }
-            if let Some((tb, hover)) = &f.toolbar {
-                self.toolbar(tb, *hover, f.disconnected);
-                if let (Some(r), Some(shelf)) = (tb.shelf, f.shelf) {
-                    self.shelf_chip(r, shelf, *hover == Some(Control::Shelf));
-                }
-            }
             if f.drop_hover {
                 self.drop_target(f.view);
             }
@@ -227,48 +206,6 @@ impl Ui {
         let wide: Vec<u16> = s.encode_utf16().collect();
         unsafe {
             self.ctx.DrawText(&wide, format, &rect(r), self.color(c), D2D1_DRAW_TEXT_OPTIONS_NONE, DWRITE_MEASURING_MODE_NATURAL);
-        }
-    }
-
-    fn toolbar(&self, t: &Toolbar, hover: Option<Control>, disconnected: bool) {
-        let s = self.scale as f64;
-        unsafe {
-            // A title strip of its own, above the screen (like macOS).
-            self.ctx.FillRectangle(&rect(t.bar), self.color(rgba(0.155, 0.155, 0.165, 1.0)));
-            for &(c, cx, cy, r) in &t.lights {
-                let col = match c {
-                    Control::Close => rgba(1.0, 0.373, 0.341, 1.0),
-                    Control::Minimize => rgba(0.996, 0.737, 0.180, 1.0),
-                    _ => rgba(0.157, 0.784, 0.251, 1.0),
-                };
-                let e = D2D1_ELLIPSE { point: windows_numerics::Vector2 { X: cx as f32, Y: cy as f32 }, radiusX: r as f32, radiusY: r as f32 };
-                self.ctx.FillEllipse(&e, self.color(col));
-                // Like macOS, the symbols appear only while the pointer is
-                // over the lights.
-                if hover.is_some_and(|h| matches!(h, Control::Close | Control::Minimize | Control::Zoom)) {
-                    let g = match c {
-                        Control::Close => "×",
-                        Control::Minimize => "−",
-                        _ => "+",
-                    };
-                    let box_ = Rect { x: cx - r, y: cy - r - 0.5 * s, w: 2.0 * r, h: 2.0 * r };
-                    self.text(g, &self.light_glyph, box_, rgba(0.25, 0.1, 0.05, 0.85));
-                }
-            }
-            for &(c, r) in &t.icons {
-                if hover == Some(c) {
-                    let rr = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: (6.0 * s) as f32, radiusY: (6.0 * s) as f32 };
-                    self.ctx.FillRoundedRectangle(&rr, self.color(rgba(1.0, 1.0, 1.0, 0.18)));
-                }
-                let g = match c {
-                    Control::Home => GLYPH_HOME,
-                    Control::AppSwitcher => GLYPH_SWITCHER,
-                    Control::Power if disconnected => GLYPH_CONNECT,
-                    Control::Power => GLYPH_POWER,
-                    _ => GLYPH_ROTATE,
-                };
-                self.text(g, &self.icons, r, rgba(1.0, 1.0, 1.0, 0.95));
-            }
         }
     }
 
@@ -335,21 +272,6 @@ impl Ui {
             self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.30, 0.42, 1.0, a)));
         }
         self.text("Connect", &self.title, Rect { y: r.y - 1.0, ..r }, rgba(1.0, 1.0, 1.0, 1.0));
-    }
-
-    /// The copied-on-iPhone chip: press it and drag out of the window.
-    fn shelf_chip(&self, r: Rect, shelf: &Shelf, hover: bool) {
-        let s = self.scale as f64;
-        let alpha = if hover { 1.0 } else { 0.85 };
-        unsafe {
-            let rr = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: (r.h / 2.0) as f32, radiusY: (r.h / 2.0) as f32 };
-            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.30, 0.38, 0.98, alpha)));
-        }
-        let glyph = if shelf.media { GLYPH_PHOTO } else { GLYPH_DOCUMENT };
-        let icon = Rect { x: r.x + 6.0 * s, y: r.y, w: 18.0 * s, h: r.h };
-        self.text(glyph, &self.step_icon, icon, rgba(1.0, 1.0, 1.0, 1.0));
-        let label = Rect { x: icon.x + icon.w + 3.0 * s, y: r.y, w: r.w - icon.w - 18.0 * s, h: r.h };
-        self.text(&shelf.label, &self.chip, label, rgba(1.0, 1.0, 1.0, 1.0));
     }
 
     /// Files from the PC are over the window: say what dropping does.

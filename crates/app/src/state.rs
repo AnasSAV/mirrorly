@@ -33,9 +33,6 @@ pub struct View {
     pub indicator: Option<Indicator>,
     /// Dark frame around the screen, physical px.
     pub bezel: f64,
-    /// Height of the hover bar above the screen while it is shown (0 when
-    /// hidden), physical px.
-    pub top_bar: f64,
 }
 
 impl Default for View {
@@ -47,7 +44,6 @@ impl Default for View {
             rotation: Rotation::R0,
             indicator: None,
             bezel: 0.0,
-            top_bar: 0.0,
         }
     }
 }
@@ -63,20 +59,15 @@ impl View {
         if self.sideways() { (h, w) } else { (w, h) }
     }
 
-    /// The screen sits inside the window, inset by the bezel, below the
-    /// hover bar when it is shown.
+    /// The screen sits inside the window, inset by the bezel. (The hover bar
+    /// is a window of its own above this one.)
     pub fn mapper(&self) -> Mapper {
         let (cw, ch) = self.content();
         let b = self.bezel;
-        let mut view = fit(self.window.0 as f64 - 2.0 * b, self.window.1 as f64 - 2.0 * b - self.top_bar, cw, ch);
+        let mut view = fit(self.window.0 as f64 - 2.0 * b, self.window.1 as f64 - 2.0 * b, cw, ch);
         view.x += b;
-        view.y += b + self.top_bar;
+        view.y += b;
         Mapper { view, rotation: self.rotation }
-    }
-
-    /// The hover bar's strip at the top of the window, if shown.
-    pub fn bar(&self) -> Option<input::geom::Rect> {
-        (self.top_bar > 0.0).then(|| input::geom::Rect { x: 0.0, y: 0.0, w: self.window.0 as f64, h: self.top_bar })
     }
 
     /// Fraction of the texture that is real picture. The content sits in the
@@ -106,8 +97,7 @@ pub struct Shelf {
 /// thread.
 #[derive(Debug, Default)]
 pub struct Chrome {
-    /// Hover bar visible.
-    pub toolbar: bool,
+    /// Control under the pointer (bar buttons, picker rows).
     pub hover: Option<Control>,
     /// Status page (title, detail) shown while there is no video.
     pub status: (String, String),

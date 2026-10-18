@@ -17,6 +17,7 @@
 // Release builds are a GUI app: no console window (logs go to a file).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod bar;
 mod drag;
 mod gpu;
 mod layout;
@@ -133,6 +134,8 @@ enum UserEvent {
     Device(DeviceEvent),
     /// The iPhones that can be chosen changed.
     Phones(Vec<device::phones::Phone>),
+    /// Mouse input on the hover bar.
+    Bar(bar::BarInput),
 }
 
 /// Probe taps: count, pause before each (screen must be still), hold.
@@ -170,9 +173,11 @@ struct App {
     phone: Option<String>,
     link: Option<&'static str>,
     size_level: usize,
-    /// Hover bar: shown above the screen while the pointer is over the
-    /// window; `bar_grew_up` remembers whether the window moved up for it.
-    bar_grew_up: bool,
+    /// Hover bar: a window of its own above the screen, shown while the
+    /// pointer is over the mirror or the bar.
+    bar: Option<bar::Bar>,
+    /// Pointer position on the bar, while it is there.
+    bar_cursor: Option<(f64, f64)>,
     hide_bar_at: Option<Instant>,
     scroll_busy_until: Instant,
     scroll_pending: f64,
@@ -230,6 +235,11 @@ impl App {
         self.shared.view.lock().unwrap().bezel = BEZEL * window.scale_factor();
         self.apply_shape();
         self.apply_size();
+        let bar_proxy = self.proxy.clone();
+        self.bar = Some(bar::Bar::new(self.hwnd, window.scale_factor(), move |input| {
+            let _ = bar_proxy.send_event(UserEvent::Bar(input));
+        })?);
+        self.place_bar();
 
         // GPU on the adapter that drives this window's monitor.
         let hmon = window.current_monitor().map(|m| windows::Win32::Graphics::Gdi::HMONITOR(m.hmonitor() as _));
@@ -321,15 +331,15 @@ impl App {
             .current_monitor()
             .map(|m| (m.size().width as f64, m.size().height as f64))
             .unwrap_or((1920.0, 1080.0));
-        let ((cw, ch), b, bar) = {
+        let ((cw, ch), b) = {
             let v = self.shared.view.lock().unwrap();
-            (v.content(), v.bezel, v.top_bar)
+            (v.content(), v.bezel)
         };
         let f = SIZES[self.size_level];
         let r = input::geom::fit(mw * f - 2.0 * b, mh * f - 2.0 * b, cw, ch);
         let _ = w.request_inner_size(PhysicalSize::new(
             (r.w + 2.0 * b).round() as u32,
-            (r.h + 2.0 * b + bar).round() as u32,
+            (r.h + 2.0 * b).round() as u32,
         ));
     }
 
@@ -475,6 +485,7 @@ impl App {
         }
         // The drag loop swallowed the button release and pointer moves.
         self.cursor_inside = false;
+        self.bar_cursor = None;
         self.update_hover();
     }
 
@@ -619,76 +630,88 @@ impl App {
         (m, upright)
     }
 
-    /// The hover bar's controls, when it is shown.
+    /// The hover bar's controls, in its own client pixels.
     fn toolbar(&self) -> Option<layout::Toolbar> {
-        let bar = self.shared.view.lock().unwrap().bar()?;
         let shelf = self.shared.chrome.lock().unwrap().shelf.is_some();
-        Some(layout::toolbar(bar, self.scale(), shelf))
+        self.bar.as_ref().filter(|b| b.is_shown()).map(|b| b.toolbar(shelf))
     }
 
-    /// Show or hide the bar. Like macOS, it is a strip above the phone
-    /// screen: the window grows upward by its height (so the screen stays
-    /// where it is, and its top edge stays free for Control Center), or
-    /// downward when there is no room above.
+    /// Show or hide the bar (animated). Like macOS, it sits above the phone
+    /// screen and never covers it, so the top edge stays free for Control
+    /// Center; the mirror window itself never changes size for it.
     fn set_bar(&mut self, show: bool) {
-        let Some(w) = self.window.clone() else { return };
-        let shown = self.shared.view.lock().unwrap().top_bar > 0.0;
-        if show == shown || (show && w.fullscreen().is_some()) {
-            return;
+        let full = self.window.as_ref().is_some_and(|w| w.fullscreen().is_some());
+        if let Some(b) = self.bar.as_mut() {
+            b.show(show && !full);
         }
-        let h_bar = (layout::BAR_HEIGHT * w.scale_factor()).round();
-        let (Ok(pos), size) = (w.outer_position(), w.inner_size()) else { return };
-        let (x, mut y, width) = (pos.x, pos.y, size.width as i32);
-        let height;
-        if show {
-            let room_above = y - work_area_top(self.hwnd) >= h_bar as i32;
-            self.bar_grew_up = room_above;
-            if room_above {
-                y -= h_bar as i32;
-            }
-            height = size.height as i32 + h_bar as i32;
-        } else {
-            if self.bar_grew_up {
-                y += h_bar as i32;
-            }
-            height = size.height as i32 - h_bar as i32;
-        }
-        self.shared.view.lock().unwrap().top_bar = if show { h_bar } else { 0.0 };
-        self.shared.chrome.lock().unwrap().toolbar = show;
-        use windows::Win32::{
-            Foundation::HWND,
-            UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos},
-        };
-        unsafe {
-            let _ = SetWindowPos(HWND(self.hwnd as _), None, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
-        }
-        self.slot.request_redraw();
+        self.sync_bar();
     }
 
-    /// Bar on while the pointer is over the window (or a finger is down),
-    /// off a moment after it leaves; track the control under the pointer.
+    /// Keep the bar on top of the mirror window's client area.
+    fn place_bar(&mut self) {
+        let Some(rect) = client_screen_rect(self.hwnd) else { return };
+        let top = work_area_top(self.hwnd);
+        let scale = self.scale();
+        if let Some(b) = self.bar.as_mut() {
+            b.place(rect, top, scale);
+        }
+        self.sync_bar();
+    }
+
+    /// Redraw the bar if what it shows changed.
+    fn sync_bar(&mut self) {
+        let st = {
+            let c = self.shared.chrome.lock().unwrap();
+            let hover = c.hover.filter(|h| !matches!(h, Control::Connect | Control::Phone(_) | Control::Forget(_)));
+            bar::state_of(&c, hover)
+        };
+        if let Some(b) = self.bar.as_mut() {
+            b.sync(&st);
+        }
+    }
+
+    /// Mouse on the hover bar: hover, a control, or a drag that moves the
+    /// window.
+    fn bar_input(&mut self, el: &ActiveEventLoop, input: bar::BarInput) {
+        match input {
+            bar::BarInput::Move(x, y) => self.bar_cursor = Some((x, y)),
+            bar::BarInput::Leave => self.bar_cursor = None,
+            bar::BarInput::Down(x, y) => {
+                self.bar_cursor = Some((x, y));
+                match self.toolbar().and_then(|t| t.hit(x, y)) {
+                    Some(c) => self.control(el, c),
+                    None => drag_window(self.hwnd),
+                }
+            }
+        }
+        self.update_hover();
+    }
+
+    /// Bar on while the pointer is over the window or the bar (or a finger
+    /// is down), off a moment after it leaves; track the control under the
+    /// pointer.
     fn update_hover(&mut self) {
-        if self.cursor_inside || self.gesture.active() {
+        if self.cursor_inside || self.bar_cursor.is_some() || self.gesture.active() {
             self.hide_bar_at = None;
             self.set_bar(true);
         } else if self.hide_bar_at.is_none() {
             self.hide_bar_at = Some(Instant::now() + BAR_LINGER);
         }
         let hover = self
-            .toolbar()
-            .and_then(|t| {
-                (self.cursor_inside && t.contains(self.cursor.0, self.cursor.1)).then(|| t.hit(self.cursor.0, self.cursor.1)).flatten()
-            })
+            .bar_cursor
+            .and_then(|(x, y)| self.toolbar().and_then(|t| t.hit(x, y)))
             .or_else(|| {
                 (self.cursor_inside && self.connect_button_at(self.cursor.0, self.cursor.1)).then_some(Control::Connect)
             })
             .or_else(|| self.cursor_inside.then(|| self.picker_at(self.cursor.0, self.cursor.1)).flatten());
-        let mut c = self.shared.chrome.lock().unwrap();
-        if c.hover != hover {
-            c.hover = hover;
-            drop(c);
+        let changed = {
+            let mut c = self.shared.chrome.lock().unwrap();
+            std::mem::replace(&mut c.hover, hover) != hover
+        };
+        if changed {
             self.slot.request_redraw();
         }
+        self.sync_bar();
     }
 
     fn set_indicator(&self, f: impl FnOnce(&mut Option<Indicator>)) {
@@ -729,7 +752,7 @@ impl ApplicationHandler<UserEvent> for App {
         let now = Instant::now();
         if self.hide_bar_at.is_some_and(|t| now >= t) {
             self.hide_bar_at = None;
-            if !self.cursor_inside && !self.gesture.active() {
+            if !self.cursor_inside && self.bar_cursor.is_none() && !self.gesture.active() {
                 self.set_bar(false);
                 self.update_hover();
             }
@@ -739,7 +762,12 @@ impl ApplicationHandler<UserEvent> for App {
             self.shared.chrome.lock().unwrap().toast = None;
             self.slot.request_redraw();
         }
-        el.set_control_flow(match [self.hide_bar_at, self.toast_until].into_iter().flatten().min() {
+        // The bar shows what is current (copied files, Connect).
+        self.sync_bar();
+        // Bar animation: about 120 steps a second while it runs.
+        let animating = self.bar.as_mut().is_some_and(|b| b.tick());
+        let frame = animating.then(|| now + Duration::from_millis(8));
+        el.set_control_flow(match [self.hide_bar_at, self.toast_until, frame].into_iter().flatten().min() {
             Some(t) => ControlFlow::WaitUntil(t),
             None => ControlFlow::Wait,
         });
@@ -754,9 +782,13 @@ impl ApplicationHandler<UserEvent> for App {
         }
     }
 
-    fn user_event(&mut self, _el: &ActiveEventLoop, ev: UserEvent) {
+    fn user_event(&mut self, el: &ActiveEventLoop, ev: UserEvent) {
         let ev = match ev {
             UserEvent::Device(ev) => ev,
+            UserEvent::Bar(input) => {
+                self.bar_input(el, input);
+                return;
+            }
             UserEvent::Phones(list) => {
                 self.shared.chrome.lock().unwrap().phones = list;
                 self.update_hover();
@@ -824,10 +856,13 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::Resized(s) => {
                 self.shared.view.lock().unwrap().window = (s.width, s.height);
                 self.slot.request_redraw();
+                self.place_bar();
             }
+            WindowEvent::Moved(_) => self.place_bar(),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.shared.chrome.lock().unwrap().scale = scale_factor;
                 self.shared.view.lock().unwrap().bezel = BEZEL * scale_factor;
+                self.place_bar();
             }
             WindowEvent::Focused(false) => self.release_all(),
             // Our own shelf being dragged out passes over the window first:
@@ -900,21 +935,6 @@ impl ApplicationHandler<UserEvent> for App {
                 let (m, upright) = self.mapper();
                 match (button, state) {
                     (MouseButton::Left, ElementState::Pressed) => {
-                        // The hover bar takes the press: a control, or the
-                        // bar's background, which moves the window.
-                        if let Some(tb) = self.toolbar()
-                            && tb.contains(self.cursor.0, self.cursor.1)
-                        {
-                            match tb.hit(self.cursor.0, self.cursor.1) {
-                                Some(c) => self.control(el, c),
-                                None => {
-                                    if let Some(w) = &self.window {
-                                        let _ = w.drag_window();
-                                    }
-                                }
-                            }
-                            return;
-                        }
                         if self.connect_button_at(self.cursor.0, self.cursor.1) {
                             self.set_connected(true);
                             return;
@@ -1081,6 +1101,40 @@ fn already_running() -> bool {
     }
 }
 
+/// The window's client area in screen pixels.
+fn client_screen_rect(hwnd: isize) -> Option<windows::Win32::Foundation::RECT> {
+    use windows::Win32::{
+        Foundation::{HWND, POINT, RECT},
+        Graphics::Gdi::ClientToScreen,
+        UI::WindowsAndMessaging::GetClientRect,
+    };
+    unsafe {
+        let h = HWND(hwnd as _);
+        let mut r = RECT::default();
+        GetClientRect(h, &mut r).ok()?;
+        let mut p = POINT { x: 0, y: 0 };
+        ClientToScreen(h, &mut p).ok().ok()?;
+        Some(RECT { left: p.x, top: p.y, right: p.x + r.right, bottom: p.y + r.bottom })
+    }
+}
+
+/// Move the window with the mouse, from a press on the bar's background.
+fn drag_window(hwnd: isize) {
+    use windows::Win32::{
+        Foundation::{HWND, LPARAM, WPARAM},
+        UI::{
+            Input::KeyboardAndMouse::ReleaseCapture,
+            WindowsAndMessaging::{SC_MOVE, SendMessageW, WM_SYSCOMMAND},
+        },
+    };
+    // SC_MOVE | HTCAPTION: the system's move loop, as if the caption were
+    // dragged (the bar follows through WindowEvent::Moved).
+    unsafe {
+        let _ = ReleaseCapture();
+        SendMessageW(HWND(hwnd as _), WM_SYSCOMMAND, Some(WPARAM((SC_MOVE | 2) as usize)), Some(LPARAM(0)));
+    }
+}
+
 /// Top of the work area (excluding the taskbar) of the window's monitor.
 fn work_area_top(hwnd: isize) -> i32 {
     use windows::Win32::{
@@ -1163,7 +1217,8 @@ fn main() -> Result<()> {
         phone: None,
         link: None,
         size_level: DEFAULT_SIZE,
-        bar_grew_up: false,
+        bar: None,
+        bar_cursor: None,
         hide_bar_at: None,
         scroll_busy_until: Instant::now(),
         scroll_pending: 0.0,

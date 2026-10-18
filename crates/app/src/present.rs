@@ -122,13 +122,9 @@ pub fn spawn(
                 }
                 if frame.is_some() && quality.level != Quality::Good {
                     // Connection-quality light, shown only when the link
-                    // degrades: in the bar when it is open, else at the top
-                    // centre (where the phone's notch is).
+                    // degrades: at the top centre (where the phone's notch is).
                     let r = opts.dot_radius * 0.4;
-                    let (cx, cy) = match v.bar() {
-                        Some(b) => (b.x + b.w / 2.0, b.y + b.h / 2.0),
-                        None => (m.view.x + m.view.w / 2.0, m.view.y + opts.dot_radius),
-                    };
+                    let (cx, cy) = (m.view.x + m.view.w / 2.0, m.view.y + opts.dot_radius);
                     dots.push((cx, cy, r, quality.level.color()));
                 }
                 (v.window, m.view, v.uv_max(), v.rotation, dots)
@@ -166,23 +162,19 @@ pub fn spawn(
                 corner_radius: layout::corner_radius(scene_view),
                 dots,
             };
-            // Window chrome: hover bar (above the screen), status or welcome
-            // page (no video), stats.
-            let bar_rect = shared.view.lock().unwrap().bar();
-            let (bar, status, welcome, shelf, drop_hover, toast, disconnected, hover, phones) = {
+            // Window chrome: status or welcome page (no video), drop target,
+            // messages, stats. (The hover bar is its own window: bar.rs.)
+            let (status, welcome, drop_hover, toast, disconnected, hover, phones) = {
                 let c = shared.chrome.lock().unwrap();
-                let bar = bar_rect.map(|b| (layout::toolbar(b, c.scale.max(1.0), c.shelf.is_some()), c.hover));
                 let status = frame.is_none().then(|| c.status.clone());
                 let welcome = if frame.is_none() { c.welcome.clone() } else { None };
                 let phones = if c.disconnected { c.phones.clone() } else { Vec::new() };
-                (bar, status, welcome, c.shelf.clone(), c.drop_hover, c.toast.clone(), c.disconnected, c.hover, phones)
+                (status, welcome, c.drop_hover, c.toast.clone(), c.disconnected, c.hover, phones)
             };
             let ui_frame = UiFrame {
                 view: scene_view,
-                toolbar: bar,
                 status: status.as_ref().map(|(t, d)| (t.as_str(), d.as_str())),
                 welcome: welcome.as_ref(),
-                shelf: shelf.as_ref(),
                 drop_hover,
                 toast: toast.as_deref(),
                 disconnected,

@@ -84,10 +84,6 @@ pub fn toolbar(bar: Rect, scale: f64, shelf: bool) -> Toolbar {
 }
 
 impl Toolbar {
-    pub fn contains(&self, x: f64, y: f64) -> bool {
-        inside(self.bar, x, y)
-    }
-
     /// Which control is under (x, y), if any. Light hit areas are a bit
     /// larger than the drawn circle.
     pub fn hit(&self, x: f64, y: f64) -> Option<Control> {
@@ -150,18 +146,18 @@ mod tests {
     fn controls_are_inside_the_bar_and_distinct() {
         let t = toolbar(bar(), 1.0, false);
         for &(c, cx, cy, _) in &t.lights {
-            assert!(t.contains(cx, cy));
+            assert!(inside(t.bar, cx, cy));
             assert_eq!(t.hit(cx, cy), Some(c));
         }
         for &(c, r) in &t.icons {
             let (cx, cy) = (r.x + r.w / 2.0, r.y + r.h / 2.0);
-            assert!(t.contains(cx, cy));
+            assert!(inside(t.bar, cx, cy));
             assert_eq!(t.hit(cx, cy), Some(c));
         }
         // The middle of the bar is plain background (drag area).
         assert_eq!(t.hit(206.0, 18.0), None);
-        assert!(t.contains(206.0, 18.0));
-        assert!(!t.contains(206.0, 60.0));
+        assert!(inside(t.bar, 206.0, 18.0));
+        assert!(!inside(t.bar, 206.0, 60.0));
     }
 
     #[test]
