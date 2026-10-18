@@ -10,7 +10,7 @@ Date: 2026-10-18. All numbers below were measured on the hardware listed in
 |---|----------|--------|
 | 1 | Pair + iOS 17+ tunnel on Windows over USB with `idevice`? | **Yes.** CoreDeviceProxy over Apple's usbmuxd + idevice's userspace TCP/UDP stack. 128–167 ms to open (warm). No TUN driver needed. |
 | 2 | Display service + RTP/HEVC stream, playable dump? | **Yes.** 10 s → 315 HEVC access units, 0 loss, 0 decode errors, 832×1808 Main. `out/capture.h265` plays in ffplay. |
-| 3 | Live streamed touch / buttons / keyboard? | **Yes, all streamed.** `com.apple.coredevice.hid.universalhidservice` (touch) and `com.apple.coredevice.hid.indigo` (buttons, keyboard). Tap, live 120 Hz drags, Home, typing, ⌘-shortcuts and a live mouse window all verified on the phone. Host-side send cost < 0.35 ms. |
+| 3 | Live streamed touch / buttons / keyboard? | **Yes, all streamed.** `com.apple.coredevice.hid.universalhidservice` (touch) and `com.apple.coredevice.hid.indigo` (buttons, keyboard, edge gestures). Tap, live 120 Hz drags, Home, typing, ⌘-shortcuts, a live mouse window, and the bottom-edge Home / App Switcher gestures all verified on the phone. Host-side send cost < 0.35 ms. |
 | 3c | Fallbacks (WebDriverAgent, Bluetooth HID)? | **Not needed** — not measured (a streamed path exists). |
 | 4 | Licenses | `idevice` + `jktcp` MIT; all 303 resolved crates permissive; FFmpeg LGPL-3.0 (dynamic). No GPL in what we ship. Pane / pymobiledevice3 (GPL-3.0) used for reading only. |
 
@@ -133,6 +133,7 @@ MIT and is what the spike uses):
 | Buttons | `com.apple.coredevice.hid.indigo` | `IndigoButtonEvent {usagePage, usageCode, state}`; Consumer page 0x0C: Home 0x40, Lock 0x30, Vol+ 0xE9, Vol− 0xEA, Mute 0xE2, Siri 0xCF |
 | Keys (path A) | `hid.indigo` | `IndigoKeyboardButtonEvent {usageCode, state}` per key (HID page 0x07) |
 | Keys (path B) | `universalhidservice` | `createService` virtual keyboard, then full-bitmap reports |
+| System edge gestures | `hid.indigo` | `IndigoDigitizerEvent {pointOne {x, y}, eventType 0 start / 1 position / 2 end, edge 3 = bottom, target 0}` with **x, y normalized 0.0–1.0** |
 
 **Auth gate:** reports are silently dropped unless a displayservice media
 stream is running; iOS needs a settle delay after stream start (the spike
@@ -154,9 +155,29 @@ HID surfaces on this phone (`s3_input list`): 257 touchscreen, 512 keyboard,
 | `live` window (mouse = finger, right click = Home, keyboard; Ctrl → ⌘) | "everything felt smooth, nothing got stuck" |
 
 Recommendation: keyboard via **Indigo** (no service registration, no 300 ms
-attach wait, natural down/up events). Not yet tested: the bottom-edge
-swipe-up-to-Home gesture, which Pane reports iOS does not accept from injected
-touches (Pane works around it by pressing Home).
+attach wait, natural down/up events).
+
+**Bottom-edge system gestures.** Pane reports iOS ignores injected edge
+swipes and fakes them with the Home button. Measured here:
+
+| Attempt | Result |
+|---|---|
+| touchscreen reports, start y = 65535, 150 ms flick to 46 % | nothing |
+| touchscreen reports, start y = 64500, 200 ms (×2) | nothing |
+| same with report timestamps as 24 MHz ticks instead of ns (×2) | nothing |
+| `IndigoDigitizerEvent`, `edge = bottom`, normalized coords, 200 ms to 54 % up, no hold (×2) | **went Home** |
+| same, 250 ms to 60 % up, hold 500 ms | went Home (too long/fast for the switcher) |
+| same, 400 ms to 30 % up, hold 800 ms | **App Switcher opened** |
+
+So the real system gestures are reachable, live (start → positions → end
+as the finger moves), via the Indigo digitizer event with `edge` set and
+coordinates in 0–1. idevice's and pymobiledevice3's sources both describe
+this path as not working; the coordinate space is the likely difference
+(idevice's doc comment says "pixel space"; pixels/points were not needed and
+not tested). Plain touchscreen reports do not trigger the bottom-edge
+gestures, but they **do** trigger the top-edge ones: pulling down
+Notification Center and Control Center worked in the `live` window, which
+sends only touchscreen reports (user-verified).
 
 ### 5.3 Host-side cost
 
@@ -257,9 +278,11 @@ the 30→60 fps idle ramp, and the per-frame receipt timing.
    shared, and it's event-driven (immediate flush plus 1 ms tick).
 3. Map coordinates against the content rect of the 832×1808 picture.
 4. Keyboard via Indigo; Ctrl → GUI for ⌘ shortcuts (verified).
-5. Bottom-edge Home gesture: test first; if iOS rejects injected edge swipes
-   (as Pane reports), use Pane's trick — keep the edge drag local and press
-   Home / double-Home.
+5. A mouse-down in the bottom edge zone starts an `IndigoDigitizerEvent`
+   edge gesture (live start/position/end in 0–1 coordinates) instead of
+   touchscreen reports; iOS then decides Home vs App Switcher itself from the
+   motion. Everything else, top-edge Notification/Control Center included,
+   stays on plain touchscreen reports (verified).
 6. Reinstall the DDI automatically after a phone reboot.
 
 ## 10. Reproduce
@@ -270,6 +293,7 @@ target\release\s1_tunnel.exe [--install-ddi]
 target\release\s2_video.exe --seconds 10 --out out\capture.h265
 target\release\s3_input.exe list | tap X Y | drag X1 Y1 X2 Y2 --ms 300 --hz 120
 target\release\s3_input.exe button home | type "text" --via indigo | keys gui+a gui+c
+target\release\s3_input.exe edge-swipe --units norm [--y2 45900 --ms 400 --hold-ms 800]
 target\release\s3_input.exe live
 target\release\s3_input.exe latency X Y -n 10 --threshold 1200 [--drag-dx N]
 set PATH=third_party\ffmpeg\bin;%PATH% && target\release\s4_decode.exe out\capture.h265 [--readback|--sw]
