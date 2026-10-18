@@ -6,7 +6,7 @@
 
 use std::{future::Future, pin::Pin, time::Instant};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use idevice::{
     Idevice, IdeviceError, IdeviceService,
     core_device_proxy::CoreDeviceProxy,
@@ -27,22 +27,37 @@ pub async fn usbmuxd() -> Result<UsbmuxdConnection, IdeviceError> {
     Ok(UsbmuxdConnection::new(Box::new(socket), 0))
 }
 
-/// The single USB-attached device, or an error explaining what is wrong.
-pub async fn usb_device() -> Result<UsbmuxdDevice> {
+/// Said when more than one iPhone is plugged in and none was chosen.
+pub const SEVERAL_ON_USB: &str = "iPhones are plugged in; choose one";
+
+/// Every USB-attached device.
+pub async fn usb_devices() -> Result<Vec<UsbmuxdDevice>> {
     let mut mux = usbmuxd()
         .await
         .context("cannot reach Apple Mobile Device Service on 127.0.0.1:27015")?;
-    let usb: Vec<_> = mux
-        .get_devices()
-        .await?
-        .into_iter()
-        .filter(|d| d.connection_type == Connection::Usb)
-        .collect();
-    match usb.len() {
-        0 => bail!("no iPhone on USB: plug it in, unlock it and tap Trust"),
-        1 => Ok(usb.into_iter().next().unwrap()),
-        n => bail!("{n} devices on USB; the spike expects exactly one"),
+    Ok(mux.get_devices().await?.into_iter().filter(|d| d.connection_type == Connection::Usb).collect())
+}
+
+/// The USB-attached device to use: the chosen one (`target`), or the only
+/// one plugged in.
+pub async fn usb_device_for(target: Option<&str>) -> Result<UsbmuxdDevice> {
+    let usb = usb_devices().await?;
+    match target {
+        Some(udid) => usb
+            .into_iter()
+            .find(|d| d.udid == udid)
+            .ok_or_else(|| anyhow!("no iPhone on USB: the chosen iPhone is not plugged in")),
+        None => match usb.len() {
+            0 => bail!("no iPhone on USB: plug it in, unlock it and tap Trust"),
+            1 => Ok(usb.into_iter().next().unwrap()),
+            n => bail!("{n} {SEVERAL_ON_USB}"),
+        },
     }
+}
+
+/// The single USB-attached device, or an error explaining what is wrong.
+pub async fn usb_device() -> Result<UsbmuxdDevice> {
+    usb_device_for(None).await
 }
 
 /// `IdeviceProvider` over usbmuxd whose sockets all have TCP_NODELAY set.

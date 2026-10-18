@@ -169,12 +169,13 @@ pub fn spawn(
             // Window chrome: hover bar (above the screen), status or welcome
             // page (no video), stats.
             let bar_rect = shared.view.lock().unwrap().bar();
-            let (bar, status, welcome, shelf, drop_hover, toast) = {
+            let (bar, status, welcome, shelf, drop_hover, toast, disconnected, hover, phones) = {
                 let c = shared.chrome.lock().unwrap();
                 let bar = bar_rect.map(|b| (layout::toolbar(b, c.scale.max(1.0), c.shelf.is_some()), c.hover));
                 let status = frame.is_none().then(|| c.status.clone());
                 let welcome = if frame.is_none() { c.welcome.clone() } else { None };
-                (bar, status, welcome, c.shelf.clone(), c.drop_hover, c.toast.clone())
+                let phones = if c.disconnected { c.phones.clone() } else { Vec::new() };
+                (bar, status, welcome, c.shelf.clone(), c.drop_hover, c.toast.clone(), c.disconnected, c.hover, phones)
             };
             let ui_frame = UiFrame {
                 view: scene_view,
@@ -184,6 +185,9 @@ pub fn spawn(
                 shelf: shelf.as_ref(),
                 drop_hover,
                 toast: toast.as_deref(),
+                disconnected,
+                hover,
+                phones: &phones,
                 stats: overlay_text.as_deref(),
             };
             let presented = {

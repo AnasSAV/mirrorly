@@ -137,7 +137,7 @@ flowchart LR
 | **Drag up from the very bottom edge** | Go Home (pause before letting go for the App Switcher) |
 | **Drag down from the top edge** | Notification Center (left) or Control Center (right) |
 | **Right-click** | Go Home |
-| **Point at the window** | Show the bar: window buttons, copied files, Rotate, App Switcher, Home |
+| **Point at the window** | Show the bar: window buttons, copied files, Disconnect, Rotate, App Switcher, Home |
 | **Drag the bar** | Move the window |
 | **Ctrl + wheel** or the **green button** | Make the window bigger or smaller |
 
@@ -158,6 +158,26 @@ Typing goes straight to the iPhone, like a Bluetooth keyboard.
 
 > The iPhone always sends its screen upright, so when an app turns sideways,
 > rotate the view with <kbd>F12</kbd> or the rotate button.
+
+### Disconnect and switch iPhones
+
+Click the **power button** on the bar to disconnect. Mirrorly lets go of the
+iPhone (the camera and microphone are free again) and stays disconnected,
+even if the iPhone is plugged in or on the same Wi-Fi, until you choose to
+connect.
+
+The disconnected screen lists every iPhone Mirrorly knows:
+
+| You see | Means |
+|---|---|
+| 🟢 **Plugged in** | connected by cable; click it to mirror over USB |
+| **Wi-Fi, when nearby** | connected to this PC before; click it to find it on your network |
+| **Forget** | remove its Wi-Fi pairing (plug it in again to use it) |
+
+To use **another iPhone**, disconnect, plug the other one in and click it.
+The first time, unlock it, tap **Trust** and turn on Developer Mode, just
+like the first phone. If two iPhones are plugged in at once, Mirrorly asks
+which one to mirror.
 
 ## Drag and drop files
 
@@ -283,12 +303,14 @@ Developer Mode*, and so on.
 | Choppy over Wi-Fi | Move closer to the router, use 5 GHz, turn Wi-Fi power saving off. |
 | Nothing appears after copying on the iPhone | Copy it again with the iPhone unlocked; text copies are ignored by design. |
 | A dropped photo didn't paste | Open the place you want it first (a chat, a note), then drop again. |
+| The camera says it's in use | Click the power button to disconnect; Mirrorly then releases it. |
+| Mirrorly connects to the wrong iPhone | Disconnect, then click the right one in the list. |
 
 Still stuck? The log is at `%LOCALAPPDATA%\Mirrorly\logs\Mirrorly.log`; run
 `Mirrorly.exe --console` to watch it live, and
 [open an issue](../../issues) with it.
 
-To forget the Wi-Fi pairing, delete `%LOCALAPPDATA%\Mirrorly\wifi\`.
+To forget an iPhone, disconnect and click **Forget** next to it.
 
 ## FAQ
 

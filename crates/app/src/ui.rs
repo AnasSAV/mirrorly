@@ -48,6 +48,12 @@ pub struct UiFrame<'a> {
     /// Files are being dragged over the window.
     pub drop_hover: bool,
     pub toast: Option<&'a str>,
+    /// Disconnected by the user: Connect button on the page and the bar.
+    pub disconnected: bool,
+    /// Control under the pointer (for the page's buttons).
+    pub hover: Option<Control>,
+    /// iPhones to choose from while disconnected.
+    pub phones: &'a [device::phones::Phone],
     pub stats: Option<&'a str>,
 }
 
@@ -86,6 +92,8 @@ const GLYPH_CHECK: &str = "\u{E73E}";
 const GLYPH_PHOTO: &str = "\u{EB9F}";
 const GLYPH_DOCUMENT: &str = "\u{E8A5}";
 const GLYPH_PASTE: &str = "\u{E77F}";
+const GLYPH_POWER: &str = "\u{E7E8}";
+const GLYPH_CONNECT: &str = "\u{E703}";
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> D2D1_COLOR_F {
     D2D1_COLOR_F { r, g, b, a }
@@ -180,12 +188,18 @@ impl Ui {
             }
             self.ctx.BeginDraw();
             match (f.welcome, f.status) {
-                (Some(w), Some((title, detail))) => self.welcome_page(f.view, w, title, detail),
-                (None, Some((title, detail))) => self.status_page(f.view, title, detail),
+                (Some(w), Some((title, detail))) if !f.disconnected => self.welcome_page(f.view, w, title, detail),
+                (_, Some(_)) if f.disconnected && !f.phones.is_empty() => self.picker_page(f.view, f.phones, f.hover),
+                (_, Some((title, detail))) => {
+                    self.status_page(f.view, title, detail);
+                    if f.disconnected {
+                        self.connect_button(f.view, f.hover == Some(Control::Connect));
+                    }
+                }
                 _ => {}
             }
             if let Some((tb, hover)) = &f.toolbar {
-                self.toolbar(tb, *hover);
+                self.toolbar(tb, *hover, f.disconnected);
                 if let (Some(r), Some(shelf)) = (tb.shelf, f.shelf) {
                     self.shelf_chip(r, shelf, *hover == Some(Control::Shelf));
                 }
@@ -216,7 +230,7 @@ impl Ui {
         }
     }
 
-    fn toolbar(&self, t: &Toolbar, hover: Option<Control>) {
+    fn toolbar(&self, t: &Toolbar, hover: Option<Control>, disconnected: bool) {
         let s = self.scale as f64;
         unsafe {
             // A title strip of its own, above the screen (like macOS).
@@ -249,11 +263,78 @@ impl Ui {
                 let g = match c {
                     Control::Home => GLYPH_HOME,
                     Control::AppSwitcher => GLYPH_SWITCHER,
+                    Control::Power if disconnected => GLYPH_CONNECT,
+                    Control::Power => GLYPH_POWER,
                     _ => GLYPH_ROTATE,
                 };
                 self.text(g, &self.icons, r, rgba(1.0, 1.0, 1.0, 0.95));
             }
         }
+    }
+
+    /// Disconnected, with iPhones to choose from: one row each.
+    fn picker_page(&self, view: Rect, phones: &[device::phones::Phone], hover: Option<Control>) {
+        let s = self.scale as f64;
+        let top = crate::layout::picker_top(view, s);
+        self.text("Choose an iPhone", &self.heading, Rect { x: view.x, y: top, w: view.w, h: 30.0 * s }, rgba(1.0, 1.0, 1.0, 1.0));
+        self.text(
+            "Mirrorly is disconnected. Click the iPhone to mirror.",
+            &self.body,
+            Rect { x: view.x + 20.0 * s, y: top + 38.0 * s, w: view.w - 40.0 * s, h: 40.0 * s },
+            rgba(0.62, 0.62, 0.66, 1.0),
+        );
+        for (i, (row, forget)) in crate::layout::picker_rows(view, s, phones.len()).into_iter().enumerate() {
+            let p = &phones[i];
+            let over_row = hover == Some(Control::Phone(i));
+            let over_forget = hover == Some(Control::Forget(i));
+            unsafe {
+                let rr = D2D1_ROUNDED_RECT { rect: rect(row), radiusX: (14.0 * s) as f32, radiusY: (14.0 * s) as f32 };
+                let a = if over_row { 0.14 } else { 0.07 };
+                self.ctx.FillRoundedRectangle(&rr, self.color(rgba(1.0, 1.0, 1.0, a)));
+                if over_row {
+                    self.ctx.DrawRoundedRectangle(&rr, self.color(rgba(0.40, 0.52, 1.0, 0.9)), (1.5 * s) as f32, None);
+                }
+            }
+            let icon = Rect { x: row.x + 10.0 * s, y: row.y, w: 34.0 * s, h: row.h };
+            self.text(GLYPH_PHONE, &self.icons, icon, rgba(0.80, 0.84, 1.0, 1.0));
+            let text_x = icon.x + icon.w + 8.0 * s;
+            let text_w = forget.x - text_x - 8.0 * s;
+            self.text(&p.name, &self.chip, Rect { x: text_x, y: row.y + 9.0 * s, w: text_w, h: 22.0 * s }, rgba(1.0, 1.0, 1.0, 1.0));
+            let how = if p.usb { "Plugged in" } else { "Wi-Fi, when nearby" };
+            let detail = if p.ios_version.is_empty() { how.to_string() } else { format!("iOS {} · {how}", p.ios_version) };
+            let dot = Rect { x: text_x, y: row.y + 33.0 * s, w: 8.0 * s, h: 8.0 * s };
+            if p.usb {
+                let e = D2D1_ELLIPSE {
+                    point: windows_numerics::Vector2 { X: (dot.x + dot.w / 2.0) as f32, Y: (dot.y + dot.h / 2.0) as f32 },
+                    radiusX: (dot.w / 2.0) as f32,
+                    radiusY: (dot.h / 2.0) as f32,
+                };
+                unsafe { self.ctx.FillEllipse(&e, self.color(rgba(0.20, 0.78, 0.35, 1.0))) };
+            }
+            let dx = if p.usb { 13.0 * s } else { 0.0 };
+            self.text(&detail, &self.step_detail, Rect { x: text_x + dx, y: row.y + 29.0 * s, w: text_w - dx, h: 20.0 * s }, rgba(0.62, 0.62, 0.66, 1.0));
+            if p.remembered {
+                if over_forget {
+                    unsafe {
+                        let rr = D2D1_ROUNDED_RECT { rect: rect(forget), radiusX: (8.0 * s) as f32, radiusY: (8.0 * s) as f32 };
+                        self.ctx.FillRoundedRectangle(&rr, self.color(rgba(1.0, 0.35, 0.35, 0.18)));
+                    }
+                }
+                let c = if over_forget { rgba(1.0, 0.55, 0.52, 1.0) } else { rgba(0.62, 0.62, 0.66, 1.0) };
+                self.text("Forget", &self.toast, forget, c);
+            }
+        }
+    }
+
+    /// Connect again, on the disconnected page.
+    fn connect_button(&self, view: Rect, hover: bool) {
+        let r = crate::layout::connect_button(view, self.scale as f64);
+        unsafe {
+            let rr = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: (r.h / 2.0) as f32, radiusY: (r.h / 2.0) as f32 };
+            let a = if hover { 1.0 } else { 0.88 };
+            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.30, 0.42, 1.0, a)));
+        }
+        self.text("Connect", &self.title, Rect { y: r.y - 1.0, ..r }, rgba(1.0, 1.0, 1.0, 1.0));
     }
 
     /// The copied-on-iPhone chip: press it and drag out of the window.

@@ -120,6 +120,10 @@ pub struct Chrome {
     pub drop_hover: bool,
     /// A short message at the bottom of the screen (file transfer).
     pub toast: Option<String>,
+    /// The user disconnected: the page offers Connect, the bar button too.
+    pub disconnected: bool,
+    /// iPhones to choose from on the disconnected page.
+    pub phones: Vec<device::phones::Phone>,
 }
 
 #[derive(Default)]

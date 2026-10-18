@@ -95,6 +95,33 @@ pub fn save_info(info: &DeviceInfo) -> Result<()> {
     Ok(())
 }
 
+/// Every iPhone Mirrorly has connected to over USB (and so can find on
+/// Wi-Fi), as last seen.
+pub fn known() -> Vec<DeviceInfo> {
+    let Ok(dir) = std::fs::read_dir(store_dir()) else { return Vec::new() };
+    dir.flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            (path.extension()? == "info").then_some(())?;
+            read_info(path.file_stem()?.to_str()?)
+        })
+        .collect()
+}
+
+/// Forget an iPhone: its Wi-Fi pairing and details. It can be used again
+/// after a USB connection.
+pub fn forget(udid: &str) -> Result<()> {
+    for p in [record_path(udid), info_path(udid)] {
+        match std::fs::remove_file(&p) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(e).with_context(|| format!("remove {}", p.display()));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 fn read_info(udid: &str) -> Option<DeviceInfo> {
     let text = std::fs::read_to_string(info_path(udid)).ok()?;
     let get = |k: &str| text.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).map(str::to_string);

@@ -20,6 +20,14 @@ pub enum Control {
     Rotate,
     AppSwitcher,
     Home,
+    /// Disconnect from the iPhone, or connect again (the bar button).
+    Power,
+    /// The Connect button on the disconnected page.
+    Connect,
+    /// A phone in the picker (index into the list): connect to it.
+    Phone(usize),
+    /// Forget that phone.
+    Forget(usize),
     /// What was copied on the iPhone: press and drag it out of the window.
     Shelf,
 }
@@ -31,7 +39,7 @@ pub struct Toolbar {
     /// Traffic lights are circles: (centre x, centre y, radius).
     pub lights: [(Control, f64, f64, f64); 3],
     /// Icon buttons, right-aligned: square hit boxes.
-    pub icons: [(Control, Rect); 3],
+    pub icons: [(Control, Rect); 4],
     /// The copied-on-iPhone chip, centred in the free middle of the bar.
     pub shelf: Option<Rect>,
 }
@@ -58,10 +66,15 @@ pub fn toolbar(bar: Rect, scale: f64, shelf: bool) -> Toolbar {
     let gap = 4.0 * scale;
     let right = bar.x + bar.w - 10.0 * scale;
     let icon = |i: f64| Rect { x: right - (i + 1.0) * size - i * gap, y: cy - size / 2.0, w: size, h: size };
-    let icons = [(Control::Home, icon(0.0)), (Control::AppSwitcher, icon(1.0)), (Control::Rotate, icon(2.0))];
+    let icons = [
+        (Control::Home, icon(0.0)),
+        (Control::AppSwitcher, icon(1.0)),
+        (Control::Rotate, icon(2.0)),
+        (Control::Power, icon(3.0)),
+    ];
     let shelf = shelf.then(|| {
         let left = x0 + 2.0 * step + r + 12.0 * scale;
-        let right = icons[2].1.x - 10.0 * scale;
+        let right = icons[3].1.x - 10.0 * scale;
         let w = (150.0 * scale).min(right - left);
         let h = (24.0 * scale).min(bar.h - 4.0 * scale);
         Rect { x: left + (right - left - w) / 2.0, y: cy - h / 2.0, w, h }
@@ -90,7 +103,38 @@ impl Toolbar {
     }
 }
 
-fn inside(r: Rect, x: f64, y: f64) -> bool {
+/// The Connect button on the disconnected page, under the page's text.
+pub fn connect_button(view: Rect, scale: f64) -> Rect {
+    let (w, h) = (150.0 * scale, 38.0 * scale);
+    Rect { x: view.x + (view.w - w) / 2.0, y: view.y + view.h * 0.42 + 112.0 * scale, w, h }
+}
+
+/// Height of the picker's header (title and hint) above the rows.
+pub const PICKER_HEADER: f64 = 96.0;
+
+/// Rows of the iPhone picker on the disconnected page: (row, Forget button)
+/// for as many of `n` phones as fit.
+pub fn picker_rows(view: Rect, scale: f64, n: usize) -> Vec<(Rect, Rect)> {
+    let pad = 18.0 * scale;
+    let (h, gap) = (60.0 * scale, 10.0 * scale);
+    let top = picker_top(view, scale) + PICKER_HEADER * scale;
+    let bottom = view.y + view.h - 24.0 * scale;
+    (0..n)
+        .map(|i| Rect { x: view.x + pad, y: top + i as f64 * (h + gap), w: view.w - 2.0 * pad, h })
+        .take_while(|r| r.y + r.h <= bottom)
+        .map(|r| {
+            let fw = 72.0 * scale;
+            (r, Rect { x: r.x + r.w - fw - 8.0 * scale, y: r.y + (r.h - 30.0 * scale) / 2.0, w: fw, h: 30.0 * scale })
+        })
+        .collect()
+}
+
+/// Where the picker's title sits.
+pub fn picker_top(view: Rect, _scale: f64) -> f64 {
+    view.y + view.h * 0.16
+}
+
+pub fn inside(r: Rect, x: f64, y: f64) -> bool {
     x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
 }
 
@@ -125,10 +169,24 @@ mod tests {
         let t = toolbar(bar(), 1.0, true);
         let s = t.shelf.expect("room for the shelf");
         assert!(s.x > t.lights[2].1 + t.lights[2].3);
-        assert!(s.x + s.w < t.icons[2].1.x);
+        assert!(s.x + s.w < t.icons[3].1.x);
         assert_eq!(t.hit(s.x + s.w / 2.0, s.y + s.h / 2.0), Some(Control::Shelf));
         // A narrow window has no room: no chip rather than an overlap.
-        assert!(toolbar(Rect { w: 200.0, ..bar() }, 1.0, true).shelf.is_none());
+        assert!(toolbar(Rect { w: 230.0, ..bar() }, 1.0, true).shelf.is_none());
+    }
+
+    #[test]
+    fn picker_rows_fit_and_do_not_overlap() {
+        let view = Rect { x: 6.0, y: 6.0, w: 400.0, h: 860.0 };
+        let rows = picker_rows(view, 1.0, 20);
+        assert!(!rows.is_empty() && rows.len() < 20, "only as many rows as fit");
+        for w in rows.windows(2) {
+            assert!(w[0].0.y + w[0].0.h < w[1].0.y);
+        }
+        for (row, forget) in &rows {
+            assert!(row.y + row.h <= view.y + view.h);
+            assert!(inside(*row, forget.x + 1.0, forget.y + 1.0), "Forget sits inside its row");
+        }
     }
 
     #[test]

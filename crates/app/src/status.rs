@@ -17,8 +17,20 @@ pub fn describe(ev: &DeviceEvent) -> Option<Page> {
     match ev {
         DeviceEvent::Connected(_) | DeviceEvent::Clipboard(_) => None,
         DeviceEvent::Status(s) => Some(progress(s)),
+        DeviceEvent::Disconnected(reason) if reason == device::USER_DISCONNECT => Some(page(
+            "Disconnected",
+            "Mirrorly has let go of your iPhone. It stays disconnected, even over USB or Wi-Fi, until you connect again.",
+        )),
+        DeviceEvent::Disconnected(reason) if reason.contains(device::conn::SEVERAL_ON_USB) => {
+            Some(page("Choose an iPhone", "More than one iPhone is plugged in. Pick the one to mirror."))
+        }
         DeviceEvent::Disconnected(reason) => Some(problem(reason)),
     }
+}
+
+/// The page for a progress message (used when connecting by hand).
+pub fn progress_page(s: &str) -> Page {
+    progress(s)
 }
 
 fn progress(s: &str) -> Page {
@@ -74,6 +86,17 @@ mod tests {
 
     fn title(ev: DeviceEvent) -> String {
         describe(&ev).unwrap().0
+    }
+
+    #[test]
+    fn user_disconnect_is_not_a_problem() {
+        let ev = DeviceEvent::Disconnected(device::USER_DISCONNECT.into());
+        assert_eq!(title(ev.clone()), "Disconnected");
+        // The first-run checklist does not move backwards for it.
+        let mut w = crate::onboarding::Welcome::default();
+        let before = w.states();
+        w.on_event(&ev);
+        assert_eq!(w.states(), before);
     }
 
     #[test]

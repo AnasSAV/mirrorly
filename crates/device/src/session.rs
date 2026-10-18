@@ -1,5 +1,6 @@
 //! Connection lifecycle: a dedicated network thread that connects over USB,
-//! streams, executes input, and reconnects when anything drops.
+//! streams, executes input, and reconnects when anything drops, unless the
+//! user disconnected (then it waits until asked to connect again).
 
 use std::{
     sync::{Arc, Mutex},
@@ -15,11 +16,11 @@ use idevice::{
     tcp::handle::UdpSocketHandle,
 };
 use input::HidEvent;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::{
     clipboard::{self, ClipCmd, ClipEvent},
-    conn::{NoDelayUsbmux, open_tunnel, usb_device},
+    conn::{NoDelayUsbmux, SEVERAL_ON_USB, open_tunnel, usb_device_for},
     ddi,
     feedback::{self, Feedback, RctlMode},
     hid::{self, HidStats, Indigo, Stamped, Uhs},
@@ -56,6 +57,9 @@ pub enum DeviceEvent {
     /// File transfer through the iPhone's clipboard.
     Clipboard(ClipEvent),
 }
+
+/// The reason given with `Disconnected` when the user disconnected.
+pub const USER_DISCONNECT: &str = "disconnected by the user";
 
 /// Receives the video RTP stream on the network thread. Must be quick:
 /// it runs inline in the receive loop.
@@ -98,6 +102,8 @@ pub struct Options {
 pub struct DeviceHandle {
     hid_tx: mpsc::UnboundedSender<Stamped>,
     clip_tx: mpsc::UnboundedSender<ClipCmd>,
+    want: watch::Sender<bool>,
+    target: watch::Sender<Option<String>>,
     pub keyframes: KeyframeRequester,
     pub hid_stats: Arc<HidStats>,
     _thread: std::thread::JoinHandle<()>,
@@ -107,6 +113,24 @@ impl DeviceHandle {
     /// Queue an input event; never blocks.
     pub fn send(&self, t_us: u64, ev: HidEvent) {
         let _ = self.hid_tx.send((t_us, ev));
+    }
+
+    /// Connect (and keep reconnecting), or disconnect and leave the iPhone
+    /// alone until asked again. Starts connected.
+    pub fn set_connected(&self, on: bool) {
+        self.want.send_replace(on);
+    }
+
+    /// Connect to this iPhone (by UDID), over USB if it is plugged in, else
+    /// Wi-Fi; it stays the target for reconnects. `None`: whichever iPhone is
+    /// plugged in, else any known one on Wi-Fi.
+    pub fn connect_to(&self, udid: Option<String>) {
+        self.target.send_replace(udid);
+        self.want.send_replace(true);
+    }
+
+    pub fn wants_connection(&self) -> bool {
+        *self.want.borrow()
     }
 
     /// Put PC files on the iPhone's clipboard and paste them into the open
@@ -137,6 +161,8 @@ pub fn start<S: MediaSink>(
 ) -> Result<DeviceHandle> {
     let (hid_tx, hid_rx) = mpsc::unbounded_channel();
     let (clip_tx, clip_rx) = mpsc::unbounded_channel();
+    let (want, want_rx) = watch::channel(true);
+    let (target, target_rx) = watch::channel(None);
     let keyframes = KeyframeRequester::default();
     let hid_stats = Arc::new(HidStats::default());
     let (kf, stats) = (keyframes.clone(), hid_stats.clone());
@@ -145,6 +171,8 @@ pub fn start<S: MediaSink>(
         hid_rx: Arc::new(tokio::sync::Mutex::new(hid_rx)),
         hid_tx: hid_tx.clone(),
         clip_rx: Arc::new(tokio::sync::Mutex::new(clip_rx)),
+        want: want_rx,
+        target: target_rx,
     };
     let thread = std::thread::Builder::new().name("network".into()).spawn(move || {
         let rt = tokio::runtime::Builder::new_multi_thread()
@@ -155,7 +183,7 @@ pub fn start<S: MediaSink>(
             .expect("tokio runtime");
         rt.block_on(session_loop(sink, on_event, opts, chans, kf, stats));
     })?;
-    Ok(DeviceHandle { hid_tx, clip_tx, keyframes, hid_stats, _thread: thread })
+    Ok(DeviceHandle { hid_tx, clip_tx, want, target, keyframes, hid_stats, _thread: thread })
 }
 
 type Events = Arc<dyn Fn(DeviceEvent) + Send + Sync>;
@@ -166,6 +194,19 @@ struct Channels {
     /// For work on the network thread that types on the phone (paste).
     hid_tx: mpsc::UnboundedSender<Stamped>,
     clip_rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<ClipCmd>>>,
+    /// Whether the user wants the iPhone connected.
+    want: watch::Receiver<bool>,
+    /// The iPhone the user chose, if any.
+    target: watch::Receiver<Option<String>>,
+}
+
+/// Resolves when the user turns the connection off.
+async fn turned_off(mut want: watch::Receiver<bool>) {
+    while *want.borrow_and_update() {
+        if want.changed().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    }
 }
 
 async fn session_loop<S: MediaSink>(
@@ -178,18 +219,36 @@ async fn session_loop<S: MediaSink>(
 ) {
     let on_event = |e: DeviceEvent| events(e);
     let hid_rx = chans.hid_rx.clone();
+    let mut want = chans.want.clone();
     let mut sink = sink;
     loop {
+        // Disconnected by the user: wait to be asked again.
+        if !*want.borrow_and_update() {
+            on_event(DeviceEvent::Disconnected(USER_DISCONNECT.into()));
+            while !*want.borrow_and_update() {
+                if want.changed().await.is_err() {
+                    return;
+                }
+            }
+        }
         on_event(DeviceEvent::Status("Connecting…".into()));
         let (s, reason) = run_once(sink, &on_event, &events, &opts, &chans, &keyframes, &stats).await;
         sink = s;
         *keyframes.0.lock().unwrap() = None;
-        tracing::warn!("session ended: {reason}");
-        on_event(DeviceEvent::Disconnected(reason));
         // Input typed while disconnected must not replay on reconnect.
         while hid_rx.lock().await.try_recv().is_ok() {}
         while chans.clip_rx.lock().await.try_recv().is_ok() {}
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        if !*want.borrow() {
+            tracing::info!("disconnected by the user");
+            continue;
+        }
+        tracing::warn!("session ended: {reason}");
+        on_event(DeviceEvent::Disconnected(reason));
+        // Retry in a second, unless the user disconnects meanwhile.
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+            _ = turned_off(want.clone()) => {}
+        }
     }
 }
 
@@ -212,7 +271,14 @@ async fn run_once<S: MediaSink>(
     keyframes: &KeyframeRequester,
     stats: &Arc<HidStats>,
 ) -> (S, String) {
-    let Prepared { mut tunnel, media: m, fb, info } = match prepare(on_event, opts).await {
+    // Connecting can take seconds (Wi-Fi search): give up at once if the
+    // user disconnects meanwhile.
+    let target = chans.target.borrow().clone();
+    let prepared = tokio::select! {
+        r = prepare(on_event, opts, target.as_deref()) => r,
+        _ = turned_off(chans.want.clone()) => return (sink, USER_DISCONNECT.into()),
+    };
+    let Prepared { mut tunnel, media: m, fb, info } = match prepared {
         Ok(Ok(p)) => p,
         Ok(Err(reason)) => return (sink, reason),
         Err(e) => return (sink, format!("{e:#}")),
@@ -277,8 +343,15 @@ async fn run_once<S: MediaSink>(
                     hid_task.abort();
                     r.expect("receive task panicked")
                 }
+                // The user disconnected: stop streaming, let go of the phone.
+                _ = turned_off(chans.want.clone()) => {
+                    hid_task.abort();
+                    let _ = cancel_tx.send(());
+                    let (s, _) = rx_task.await.expect("receive task panicked");
+                    (s, USER_DISCONNECT.into())
+                }
                 // USB is preferred: leave Wi-Fi as soon as a cable appears.
-                _ = usb_appears(), if on_wifi => {
+                _ = usb_appears(target.as_deref()), if on_wifi => {
                     hid_task.abort();
                     let _ = cancel_tx.send(());
                     let (s, _) = rx_task.await.expect("receive task panicked");
@@ -307,11 +380,11 @@ async fn run_once<S: MediaSink>(
     (sink, reason)
 }
 
-/// Resolves once a USB-attached iPhone shows up in usbmuxd.
-async fn usb_appears() {
+/// Resolves once the iPhone (the chosen one, or any) is plugged in.
+async fn usb_appears(target: Option<&str>) {
     loop {
         tokio::time::sleep(Duration::from_secs(2)).await;
-        if usb_device().await.is_ok() {
+        if usb_device_for(target).await.is_ok() {
             return;
         }
     }
@@ -327,8 +400,12 @@ async fn connect_hid(t: &mut crate::conn::Tunnel, settle: Duration) -> Result<(U
 
 /// Connect, check prerequisites and start the media stream. `Ok(Err(..))`
 /// is a planned early end (e.g. the DDI was just installed).
-async fn prepare(on_event: &impl Fn(DeviceEvent), opts: &Options) -> Result<Result<Prepared, String>> {
-    let (mut t, info) = match usb_device().await {
+async fn prepare(
+    on_event: &impl Fn(DeviceEvent),
+    opts: &Options,
+    target: Option<&str>,
+) -> Result<Result<Prepared, String>> {
+    let (mut t, info) = match usb_device_for(target).await {
         Ok(dev) => {
             let provider = NoDelayUsbmux::new(&dev);
             let info = read_info(&provider, &dev.udid).await?;
@@ -350,8 +427,13 @@ async fn prepare(on_event: &impl Fn(DeviceEvent), opts: &Options) -> Result<Resu
             }
             (open_tunnel(&provider).await?, info)
         }
+        // Several iPhones on USB: the user has to pick one.
+        Err(e) if e.to_string().contains(SEVERAL_ON_USB) => return Err(e),
         Err(usb_err) if opts.wifi => {
             let mut paired = wifi::load_paired().await;
+            if let Some(udid) = target {
+                paired.retain(|p| p.info.udid == udid);
+            }
             if paired.is_empty() {
                 return Err(usb_err.context("no Wi-Fi pairing yet: connect the iPhone by USB once"));
             }

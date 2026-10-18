@@ -52,6 +52,7 @@ fn step_for(ev: &DeviceEvent) -> Option<usize> {
     match ev {
         DeviceEvent::Connected(_) => Some(3),
         DeviceEvent::Clipboard(_) => None,
+        DeviceEvent::Disconnected(r) if r == device::USER_DISCONNECT || r.contains(device::conn::SEVERAL_ON_USB) => None,
         // The routine "Connecting…" says nothing new; later progress means
         // every prerequisite is met.
         DeviceEvent::Status(s) if s.starts_with("Connecting…") => None,

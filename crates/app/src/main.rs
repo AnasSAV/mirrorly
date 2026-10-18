@@ -46,7 +46,7 @@ use winit::{
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy},
     keyboard::{KeyCode, PhysicalKey},
-    platform::windows::{IconExtWindows, MonitorHandleExtWindows},
+    platform::windows::{IconExtWindows, MonitorHandleExtWindows, WindowAttributesExtWindows},
     raw_window_handle::{HasWindowHandle, RawWindowHandle},
     window::{Icon, Window, WindowId},
 };
@@ -131,6 +131,8 @@ unsafe extern "system" {
 #[derive(Debug)]
 enum UserEvent {
     Device(DeviceEvent),
+    /// The iPhones that can be chosen changed.
+    Phones(Vec<device::phones::Phone>),
 }
 
 /// Probe taps: count, pause before each (screen must be still), hold.
@@ -184,7 +186,7 @@ struct App {
 
 impl App {
     fn send(&self, ev: HidEvent) {
-        if let Some(d) = &self.device {
+        if let Some(d) = self.device.as_ref().filter(|d| d.wants_connection()) {
             d.send(now_us(), ev);
         }
     }
@@ -210,6 +212,7 @@ impl App {
             .with_decorations(false)
             .with_resizable(false)
             .with_window_icon(Icon::from_resource(1, None).ok())
+            .with_class_name(WINDOW_CLASS)
             .with_inner_size(PhysicalSize::new(400u32, 866u32));
         let window = Arc::new(el.create_window(attrs)?);
         self.hwnd = match window.window_handle()?.as_raw() {
@@ -276,6 +279,11 @@ impl App {
             },
             now_us,
         )?);
+
+        let phones_proxy = self.proxy.clone();
+        device::phones::spawn_watch(move |list| {
+            let _ = phones_proxy.send_event(UserEvent::Phones(list));
+        })?;
 
         let proxy = self.proxy.clone();
         let rctl = match self.args.rctl {
@@ -364,7 +372,90 @@ impl App {
             Control::AppSwitcher => self.send(HidEvent::AppSwitcher),
             Control::Home => self.send(HidEvent::Button { button: Button::Home }),
             Control::Shelf => self.drag_shelf(),
+            Control::Power => {
+                let on = self.shared.chrome.lock().unwrap().disconnected;
+                self.set_connected(on);
+            }
+            Control::Connect => self.set_connected(true),
+            Control::Phone(i) => {
+                let phone = self.shared.chrome.lock().unwrap().phones.get(i).cloned();
+                if let (Some(p), Some(d)) = (phone, &self.device) {
+                    tracing::info!("user picks {}", p.name);
+                    d.connect_to(Some(p.udid));
+                    self.set_connected(true);
+                }
+            }
+            Control::Forget(i) => {
+                let phone = self.shared.chrome.lock().unwrap().phones.get(i).cloned();
+                if let Some(p) = phone {
+                    match device::wifi::forget(&p.udid) {
+                        Ok(()) => {
+                            tracing::info!("forgot {}", p.name);
+                            {
+                                let mut c = self.shared.chrome.lock().unwrap();
+                                c.phones.retain(|x| x.udid != p.udid || x.usb);
+                                if let Some(x) = c.phones.iter_mut().find(|x| x.udid == p.udid) {
+                                    x.remembered = false;
+                                }
+                                c.hover = None;
+                            }
+                            self.toast(format!("Forgot {}. Plug it in to use it again.", p.name), 4.0);
+                        }
+                        Err(e) => {
+                            tracing::warn!("forget {}: {e:#}", p.name);
+                            self.toast("Couldn't forget that iPhone", 3.0);
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    /// The picker row or Forget button under (x, y), while it is shown.
+    fn picker_at(&self, x: f64, y: f64) -> Option<Control> {
+        let c = self.shared.chrome.lock().unwrap();
+        if !c.disconnected || c.phones.is_empty() {
+            return None;
+        }
+        let (m, _) = self.mapper();
+        layout::picker_rows(m.view, self.scale(), c.phones.len()).into_iter().enumerate().find_map(|(i, (row, forget))| {
+            if c.phones[i].remembered && layout::inside(forget, x, y) {
+                Some(Control::Forget(i))
+            } else {
+                layout::inside(row, x, y).then_some(Control::Phone(i))
+            }
+        })
+    }
+
+    /// Disconnect from the iPhone (Mirrorly then leaves it alone, even when
+    /// it is plugged in or on Wi-Fi), or connect again.
+    fn set_connected(&mut self, on: bool) {
+        let Some(d) = &self.device else { return };
+        tracing::info!("user {}", if on { "connects" } else { "disconnects" });
+        d.set_connected(on);
+        self.release_all();
+        {
+            let mut c = self.shared.chrome.lock().unwrap();
+            c.disconnected = !on;
+            c.hover = None;
+            if on {
+                c.status = status::progress_page("Connecting…");
+            }
+        }
+        self.slot.request_redraw();
+    }
+
+    /// The Connect button, when the disconnected page shows it (no phones
+    /// to list).
+    fn connect_button_at(&self, x: f64, y: f64) -> bool {
+        {
+            let c = self.shared.chrome.lock().unwrap();
+            if !c.disconnected || !c.phones.is_empty() {
+                return false;
+            }
+        }
+        let (m, _) = self.mapper();
+        layout::inside(layout::connect_button(m.view, self.scale()), x, y)
     }
 
     /// Drag what was copied on the iPhone out of the window (runs the
@@ -583,9 +674,15 @@ impl App {
         } else if self.hide_bar_at.is_none() {
             self.hide_bar_at = Some(Instant::now() + BAR_LINGER);
         }
-        let hover = self.toolbar().and_then(|t| {
-            (self.cursor_inside && t.contains(self.cursor.0, self.cursor.1)).then(|| t.hit(self.cursor.0, self.cursor.1)).flatten()
-        });
+        let hover = self
+            .toolbar()
+            .and_then(|t| {
+                (self.cursor_inside && t.contains(self.cursor.0, self.cursor.1)).then(|| t.hit(self.cursor.0, self.cursor.1)).flatten()
+            })
+            .or_else(|| {
+                (self.cursor_inside && self.connect_button_at(self.cursor.0, self.cursor.1)).then_some(Control::Connect)
+            })
+            .or_else(|| self.cursor_inside.then(|| self.picker_at(self.cursor.0, self.cursor.1)).flatten());
         let mut c = self.shared.chrome.lock().unwrap();
         if c.hover != hover {
             c.hover = hover;
@@ -657,7 +754,24 @@ impl ApplicationHandler<UserEvent> for App {
         }
     }
 
-    fn user_event(&mut self, _el: &ActiveEventLoop, UserEvent::Device(ev): UserEvent) {
+    fn user_event(&mut self, _el: &ActiveEventLoop, ev: UserEvent) {
+        let ev = match ev {
+            UserEvent::Device(ev) => ev,
+            UserEvent::Phones(list) => {
+                self.shared.chrome.lock().unwrap().phones = list;
+                self.update_hover();
+                self.slot.request_redraw();
+                return;
+            }
+        };
+        // Several iPhones plugged in and none chosen: stop and show the picker.
+        if let DeviceEvent::Disconnected(r) = &ev
+            && r.contains(device::conn::SEVERAL_ON_USB)
+            && let Some(d) = &self.device
+        {
+            d.set_connected(false);
+            self.shared.chrome.lock().unwrap().disconnected = true;
+        }
         {
             let mut c = self.shared.chrome.lock().unwrap();
             if let Some(page) = status::describe(&ev) {
@@ -801,6 +915,18 @@ impl ApplicationHandler<UserEvent> for App {
                             }
                             return;
                         }
+                        if self.connect_button_at(self.cursor.0, self.cursor.1) {
+                            self.set_connected(true);
+                            return;
+                        }
+                        if let Some(c) = self.picker_at(self.cursor.0, self.cursor.1) {
+                            self.control(el, c);
+                            return;
+                        }
+                        // Nothing to touch while disconnected.
+                        if self.shared.chrome.lock().unwrap().disconnected {
+                            return;
+                        }
                         if let Some(p) = m.to_panel(self.cursor.0, self.cursor.1, false) {
                             // The indicator goes up before the event is even
                             // queued: it is the perceived-latency trick.
@@ -924,6 +1050,37 @@ fn shelf_for(files: &[std::path::PathBuf]) -> Shelf {
     Shelf { label, media }
 }
 
+/// Window class of the Mirrorly window, so a second launch can find it.
+const WINDOW_CLASS: &str = "MirrorlyWindow";
+
+/// One Mirrorly at a time: two would both hold the iPhone (disconnecting
+/// one left the other streaming, and the camera stayed busy). A second
+/// launch brings the running window forward instead.
+fn already_running() -> bool {
+    use windows::{
+        Win32::{
+            Foundation::{ERROR_ALREADY_EXISTS, GetLastError},
+            System::Threading::CreateMutexW,
+            UI::WindowsAndMessaging::{FindWindowW, IsIconic, SW_RESTORE, SetForegroundWindow, ShowWindow},
+        },
+        core::{HSTRING, w},
+    };
+    unsafe {
+        // Held (never closed) for the life of the process.
+        let Ok(_mutex) = CreateMutexW(None, false, w!(r"Local\Mirrorly.SingleInstance")) else { return false };
+        if GetLastError() != ERROR_ALREADY_EXISTS {
+            return false;
+        }
+        if let Ok(h) = FindWindowW(&HSTRING::from(WINDOW_CLASS), None) {
+            if IsIconic(h).as_bool() {
+                let _ = ShowWindow(h, SW_RESTORE);
+            }
+            let _ = SetForegroundWindow(h);
+        }
+        true
+    }
+}
+
 /// Top of the work area (excluding the taskbar) of the window's monitor.
 fn work_area_top(hwnd: isize) -> i32 {
     use windows::Win32::{
@@ -982,6 +1139,10 @@ fn main() -> Result<()> {
     let _ = epoch();
     unsafe { timeBeginPeriod(1) };
     let args = Args::parse();
+    // Before logging: a second copy must not truncate the running one's log.
+    if already_running() {
+        return Ok(());
+    }
     init_logging(args.console);
     tracing::info!("Mirrorly {} starting", env!("CARGO_PKG_VERSION"));
 
