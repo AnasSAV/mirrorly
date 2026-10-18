@@ -31,6 +31,10 @@ struct Args {
     /// Never send PLI/FIR (to see how the encoder behaves without them).
     #[arg(long)]
     no_keyframe_requests: bool,
+    /// Print RTP header extensions whenever they change (looking for an
+    /// orientation signal while the phone is rotated).
+    #[arg(long)]
+    ext: bool,
 }
 
 const VIDEO_PT: u8 = 100;
@@ -83,6 +87,8 @@ async fn main() -> Result<()> {
     let mut first_ts: Option<(u32, u64)> = None;
     let mut last_ts: Option<(u32, u64)> = None;
     let mut idx = 0u64;
+    let mut ext_packets = 0u64;
+    let mut last_ext: Option<(bool, u16, Vec<u8>)> = None;
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs_f64(args.seconds);
     let start_us = now_us();
@@ -104,6 +110,24 @@ async fn main() -> Result<()> {
         *pt_counts.entry(pkt.payload_type).or_default() += 1;
         if pkt.payload_type != VIDEO_PT {
             continue;
+        }
+        if pkt.extension {
+            ext_packets += 1;
+        }
+        if args.ext {
+            let cur = (pkt.extension, pkt.ext_profile, pkt.ext_data.to_vec());
+            if last_ext.as_ref() != Some(&cur) {
+                eprintln!(
+                    "[{:>7.3} s] RTP ext: present={} profile={:#06x} data={:02x?}  (marker={} seq={})",
+                    (rx_us - start_us) as f64 / 1e6,
+                    cur.0,
+                    cur.1,
+                    cur.2,
+                    pkt.marker,
+                    pkt.sequence_number
+                );
+                last_ext = Some(cur);
+            }
         }
         if let Some(fb) = &fb {
             fb.rx_state.on_packet(pkt.ssrc, pkt.sequence_number, pkt.timestamp);
@@ -184,6 +208,7 @@ async fn main() -> Result<()> {
     let s = &depack.stats;
     eprintln!("\n=== s2 summary ({wall_s:.1} s) ===");
     eprintln!("RTP packets {} (by PT: {pt_counts:?}), RTCP from device {rtcp_in}", s.packets);
+    eprintln!("video packets carrying a header extension: {ext_packets}");
     eprintln!(
         "AUs {} | written {written} | dropped {dropped} | keyframes {keys} | corrupt {} | unterminated {}",
         s.aus, s.corrupt_aus, s.unterminated_aus

@@ -29,6 +29,11 @@ async fn main() -> Result<()> {
         let v = lockdown.get_value(Some(key), None).await;
         println!("{key:>15}: {}", show(v.ok()));
     }
+    // Screen geometry, if lockdown publishes it (iTunes domain).
+    for key in ["ScreenWidth", "ScreenHeight", "ScreenScaleFactor"] {
+        let v = lockdown.get_value(Some(key), Some("com.apple.mobile.iTunes")).await;
+        println!("{key:>15}: {}", show(v.ok()));
+    }
     let dev_mode = lockdown
         .get_value(Some("DeveloperModeStatus"), Some("com.apple.security.mac.amfi"))
         .await;
