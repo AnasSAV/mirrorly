@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = ["spike", "spike-decode"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+# idevice ships breaking changes every point release: keep it pinned exactly.
+idevice = { version = "=0.1.68", default-features = false, features = [
+  "ring",
+  "usbmuxd",
+  "core_device_proxy",
+  "tunnel_tcp_stack",
+  "rsd",
+  "core_device",
+  "display_stream",
+  "cryptexd",
+  "tss",
+  "mobile_image_mounter",
+  "amfi",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync", "fs", "io-util"] }
+plist = "1.8"
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+debug = 1
