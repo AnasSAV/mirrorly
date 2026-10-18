@@ -86,6 +86,9 @@ Using it
     Windows. Drop PC files on the window to send them to the iPhone: photos
     are pasted into the open app, documents are saved by name in a Mirrorly
     folder in the Files app.
+  - The power button on the bar disconnects (the iPhone is left alone until
+    you connect again). The disconnected screen lists your iPhones: click
+    one to mirror it, or Forget it.
   - After one USB connection, unplug: Mirrorly continues over Wi-Fi (same
     network, Windows network profile "Private"). Plug in to go back to USB.
 
