@@ -50,6 +50,9 @@ struct Args {
     /// Do not install the Developer Disk Image automatically.
     #[arg(long)]
     no_auto_ddi: bool,
+    /// USB only: no Wi-Fi fallback and no Wi-Fi pairing.
+    #[arg(long)]
+    no_wifi: bool,
     /// Start with the latency overlay shown (F10 toggles it).
     #[arg(long)]
     overlay: bool,
@@ -252,6 +255,7 @@ impl App {
             },
             device::Options {
                 auto_install_ddi: !self.args.no_auto_ddi,
+                wifi: !self.args.no_wifi,
                 rctl,
                 hid_settle: Duration::from_millis(500),
                 now_us,
@@ -408,11 +412,17 @@ impl ApplicationHandler<UserEvent> for App {
                     v.screen = (info.screen_w, info.screen_h);
                 }
                 self.fit_window((info.screen_w, info.screen_h));
+                let link = match info.transport {
+                    device::Transport::Usb => "USB",
+                    device::Transport::Wifi => "Wi-Fi",
+                };
+                *self.shared.transport.lock().unwrap() = Some(link);
                 self.phone = Some(format!("{} (iOS {})", info.name, info.ios_version));
-                self.status = "connected".into();
+                self.status = format!("connected via {link}");
                 self.set_title();
             }
             UserEvent::Device(DeviceEvent::Disconnected(reason)) => {
+                *self.shared.transport.lock().unwrap() = None;
                 self.gesture = Gesture::default();
                 self.keys_down.clear();
                 self.status = format!("disconnected: {reason}");

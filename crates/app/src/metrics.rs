@@ -228,6 +228,91 @@ impl Metrics {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Quality {
+    #[default]
+    Good,
+    Fair,
+    Poor,
+}
+
+impl Quality {
+    pub fn color(self) -> [f32; 4] {
+        match self {
+            Quality::Good => [0.20, 0.85, 0.35, 0.95],
+            Quality::Fair => [1.00, 0.70, 0.10, 0.95],
+            Quality::Poor => [0.95, 0.20, 0.20, 0.95],
+        }
+    }
+}
+
+/// Connection quality from RFC 3550 interarrival jitter (arrival spacing vs
+/// RTP timestamp spacing, so a still screen's lower frame rate is not
+/// jitter) plus recent loss / keyframe requests.
+#[derive(Debug, Default)]
+pub struct QualityMeter {
+    jitter_ms: f64,
+    prev: Option<(u32, u64)>,
+    last_trouble_us: u64,
+    seen_trouble: u64,
+    better_since_us: Option<u64>,
+    pub level: Quality,
+}
+
+/// The display stream's RTP clock (measured ~24 kHz in Phase 0).
+const RTP_HZ: f64 = 24_000.0;
+const TROUBLE_HOLD_US: u64 = 2_000_000;
+/// Jitter thresholds (ms). The phone's own encode-time variation already
+/// shows ~5 ms over USB, so "good" has to sit above that.
+const GOOD_BELOW_MS: f64 = 10.0;
+const FAIR_BELOW_MS: f64 = 25.0;
+/// A better level must hold this long before the light improves.
+const RECOVER_US: u64 = 2_000_000;
+
+impl QualityMeter {
+    pub fn jitter_ms(&self) -> f64 {
+        self.jitter_ms
+    }
+
+    pub fn on_frame(&mut self, rtp_ts: u32, arrival_us: u64, c: &Counters) -> Quality {
+        if let Some((pts, parr)) = self.prev {
+            let d_media = rtp_ts.wrapping_sub(pts) as i32 as f64 / RTP_HZ * 1000.0;
+            let d_arrival = (arrival_us as f64 - parr as f64) / 1000.0;
+            let d = (d_arrival - d_media).abs();
+            // Ignore discontinuities (stream restart, long idle gaps).
+            if d < 1000.0 {
+                self.jitter_ms += (d - self.jitter_ms) / 16.0;
+            }
+        }
+        self.prev = Some((rtp_ts, arrival_us));
+        let trouble = c.lost_packets.load(Relaxed) + c.corrupt_aus.load(Relaxed) + c.keyframe_requests.load(Relaxed);
+        if trouble != self.seen_trouble {
+            self.seen_trouble = trouble;
+            self.last_trouble_us = arrival_us;
+        }
+        let recent_trouble = self.last_trouble_us != 0 && arrival_us.saturating_sub(self.last_trouble_us) < TROUBLE_HOLD_US;
+        let now = if recent_trouble || self.jitter_ms >= FAIR_BELOW_MS {
+            Quality::Poor
+        } else if self.jitter_ms >= GOOD_BELOW_MS {
+            Quality::Fair
+        } else {
+            Quality::Good
+        };
+        // Worse: show at once. Better: only after it has held for a while.
+        if now >= self.level {
+            self.level = now;
+            self.better_since_us = None;
+        } else {
+            let since = *self.better_since_us.get_or_insert(arrival_us);
+            if arrival_us.saturating_sub(since) >= RECOVER_US {
+                self.level = now;
+                self.better_since_us = None;
+            }
+        }
+        self.level
+    }
+}
+
 /// (p50, p95) in milliseconds.
 pub fn pct50_95(v: &mut [u64]) -> (f64, f64) {
     if v.is_empty() {
@@ -274,6 +359,38 @@ mod tests {
         m.push(rec(1, 1_000_000));
         m.push(rec(2, 4_000_000));
         assert_eq!(m.frames.len(), 1);
+    }
+
+    #[test]
+    fn quality_tracks_jitter_and_trouble() {
+        let c = Counters::default();
+        let mut q = QualityMeter::default();
+        // Perfectly paced 30 fps: no jitter.
+        for i in 0..50u32 {
+            q.on_frame(i * 800, 1_000_000 + i as u64 * 33_333, &c);
+        }
+        assert_eq!(q.level, Quality::Good);
+        assert!(q.jitter_ms() < 0.1);
+        // Arrivals wobbling by +-30 ms: poor.
+        for i in 50..150u32 {
+            let wobble = if i % 2 == 0 { 30_000 } else { 0 };
+            q.on_frame(i * 800, 1_000_000 + i as u64 * 33_333 + wobble, &c);
+        }
+        assert_eq!(q.level, Quality::Poor);
+        // A keyframe request marks the link poor at once...
+        let mut q = QualityMeter::default();
+        q.on_frame(0, 1_000_000, &c);
+        c.keyframe_requests.fetch_add(1, Relaxed);
+        assert_eq!(q.on_frame(800, 1_033_333, &c), Quality::Poor);
+        // ...and it recovers only after the trouble window plus the hold.
+        let mut last = Quality::Poor;
+        for i in 2..200u32 {
+            last = q.on_frame(800 * i, 1_000_000 + i as u64 * 33_333, &c);
+            if i < 60 {
+                assert_eq!(last, Quality::Poor, "frame {i}");
+            }
+        }
+        assert_eq!(last, Quality::Good);
     }
 
     #[test]

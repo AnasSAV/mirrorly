@@ -16,7 +16,7 @@ use windows::Win32::{
 };
 
 use crate::{
-    metrics::{DisplaySample, FrameRecord, Metrics, TapResult},
+    metrics::{DisplaySample, FrameRecord, Metrics, QualityMeter, TapResult},
     overlay::Overlay,
     render::{Renderer, Scene},
     state::{Indicator, Shared},
@@ -80,6 +80,8 @@ pub fn spawn(
         let mut stats_unavailable = false;
         let trace_dxgi = std::env::var_os("MIRROR_DXGI_TRACE").is_some();
         let mut last_summary = now_us();
+        let mut quality = QualityMeter::default();
+        let mut last_level = None;
         loop {
             let (frame, is_new, quit) = slot.wait(last_seq);
             let wake = now_us();
@@ -95,10 +97,15 @@ pub fn spawn(
                 && is_new
             {
                 last_seq = f.seq;
+                let level = quality.on_frame(f.timing.rtp_ts, f.timing.last_pkt_us, &shared.counters);
+                if last_level != Some(level) {
+                    tracing::info!("connection quality: {level:?} (jitter {:.1} ms)", quality.jitter_ms());
+                    last_level = Some(level);
+                }
             }
 
             let mut responded_tap = None;
-            let (window, scene_view, uv_max, rotation, dot) = {
+            let (window, scene_view, uv_max, rotation, dots) = {
                 let mut v = shared.view.lock().unwrap();
                 if let Some(f) = &frame {
                     v.tex = Some((f.picture.tex_width, f.picture.tex_height));
@@ -107,11 +114,18 @@ pub fn spawn(
                     }
                 }
                 let m = v.mapper();
-                let dot = v.indicator.map(|ind| {
+                let mut dots = Vec::with_capacity(2);
+                if let Some(ind) = v.indicator {
                     let (x, y) = m.to_window(ind.panel.0, ind.panel.1);
-                    (x, y, opts.dot_radius)
-                });
-                (v.window, m.view, v.uv_max(), v.rotation, dot)
+                    dots.push((x, y, opts.dot_radius, [1.0, 1.0, 1.0, 0.85]));
+                }
+                if frame.is_some() {
+                    // Connection-quality light, top-right of the picture.
+                    let r = opts.dot_radius * 0.4;
+                    let inset = opts.dot_radius;
+                    dots.push((m.view.x + m.view.w - inset, m.view.y + inset, r, quality.level.color()));
+                }
+                (v.window, m.view, v.uv_max(), v.rotation, dots)
             };
 
             if r.size != window {
@@ -130,14 +144,20 @@ pub fn spawn(
             let show_overlay = shared.overlay.load(Relaxed);
             let overlay_text = show_overlay.then(|| {
                 let q = shared.hid_stats.lock().unwrap().as_ref().map(|s| s.last_queue_us.load(Relaxed)).unwrap_or(0);
-                metrics.text(&shared.counters, q, rotation.degrees())
+                let link = shared.transport.lock().unwrap().unwrap_or("-");
+                format!(
+                    "{link}  link {:?}  jitter {:.1} ms\n{}",
+                    quality.level,
+                    quality.jitter_ms(),
+                    metrics.text(&shared.counters, q, rotation.degrees())
+                )
             });
             let scene = Scene {
                 picture: frame.as_ref().map(|f| (&f.picture.texture, f.picture.index)),
                 view: scene_view,
                 uv_max,
                 rotation,
-                dot,
+                dots,
             };
             let presented = {
                 let _g = lock.lock();

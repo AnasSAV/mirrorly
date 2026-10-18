@@ -67,7 +67,10 @@ float4 ps_video(VsOut i) : SV_Target {
 float4 ps_dot(VsOut i) : SV_Target {
     float d = length(i.uv - 0.5) * 2.0;           // 0 at centre, 1 at the rim
     float edge = saturate((1.0 - d) * 6.0);       // soft outer edge
-    float fill = d > 0.72 ? 1.0 : 0.35;           // solid ring, translucent core
+    // White = touch indicator: solid ring, translucent core. Coloured =
+    // status light: filled.
+    bool ring = all(color.rgb > 0.99);
+    float fill = (!ring || d > 0.72) ? 1.0 : 0.35;
     return float4(color.rgb, color.a * edge * fill);
 }
 "#;
@@ -105,8 +108,9 @@ pub struct Scene<'a> {
     pub uv_max: (f32, f32),
     /// How the picture is turned on screen.
     pub rotation: Rotation,
-    /// Touch indicator centre in back-buffer pixels, and its radius.
-    pub dot: Option<(f64, f64, f64)>,
+    /// Dots to draw over the picture: centre and radius in back-buffer
+    /// pixels, and RGBA (touch indicator, connection quality).
+    pub dots: Vec<(f64, f64, f64, [f32; 4])>,
 }
 
 impl Renderer {
@@ -247,10 +251,10 @@ impl Renderer {
                 ctx.PSSetShaderResources(0, Some(&[None, None]));
             }
 
-            if let Some((x, y, r)) = scene.dot {
+            for &(x, y, r, color) in &scene.dots {
                 let rect = Rect { x: x - r, y: y - r, w: 2.0 * r, h: 2.0 * r };
                 let uvs = DISPLAY_CORNERS.map(|(u, v)| (u as f32, v as f32));
-                self.upload(quad(rect, bw, bh, uvs), [1.0, 1.0, 1.0, 0.85])?;
+                self.upload(quad(rect, bw, bh, uvs), color)?;
                 ctx.OMSetBlendState(&self.blend, Some(&[0.0; 4]), 0xffff_ffff);
                 ctx.PSSetShader(&self.ps_dot, None);
                 ctx.Draw(4, 0);

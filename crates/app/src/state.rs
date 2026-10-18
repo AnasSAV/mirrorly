@@ -77,4 +77,6 @@ pub struct Shared {
     pub counters: Counters,
     /// The current session's input statistics, once a device is running.
     pub hid_stats: Mutex<Option<Arc<HidStats>>>,
+    /// "USB" / "Wi-Fi" while connected.
+    pub transport: Mutex<Option<&'static str>>,
 }
