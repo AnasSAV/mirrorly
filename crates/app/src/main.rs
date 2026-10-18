@@ -1,17 +1,28 @@
-//! iPhone mirror for Windows: window, presentation and input wiring.
+//! Mirrorly: mirror and control an iPhone from Windows.
 //!
 //! Threads: main (winit window + input mapping), network (device crate:
 //! tunnel, RTP receive, HID send), decode (FFmpeg d3d11va), present
 //! (swapchain). Input goes window -> network directly and never waits on
 //! decode or present.
+//!
+//! The window follows macOS's iPhone Mirroring: just the phone screen with
+//! rounded corners, a bar that appears when the pointer nears the top
+//! (window buttons, Home, App Switcher, Rotate), and a status page when
+//! there is nothing to show.
+
+// Release builds are a GUI app: no console window (logs go to a file).
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod gpu;
+mod layout;
 mod metrics;
-mod overlay;
+mod onboarding;
 mod present;
 mod render;
 mod sink;
 mod state;
+mod status;
+mod ui;
 
 use std::{
     collections::HashSet,
@@ -23,23 +34,25 @@ use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use device::{DeviceEvent, DeviceHandle, RctlMode};
 use input::{Button, HidEvent, gesture::Gesture, keys::hid_usage};
-use muda::{Menu, MenuEvent, MenuItem};
 use video::{D3dLock, FrameSlot};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::{ElementState, MouseButton, WindowEvent},
+    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy},
     keyboard::{KeyCode, PhysicalKey},
-    platform::windows::MonitorHandleExtWindows,
+    platform::windows::{IconExtWindows, MonitorHandleExtWindows},
     raw_window_handle::{HasWindowHandle, RawWindowHandle},
-    window::{Window, WindowId},
+    window::{Icon, Window, WindowId},
 };
 
-use crate::state::{Indicator, Shared};
+use crate::{
+    layout::Control,
+    state::{Indicator, Shared},
+};
 
 #[derive(Parser, Debug)]
-#[command(about = "Mirror and control an iPhone over USB")]
+#[command(name = "Mirrorly", version, about = "Mirror and control an iPhone from Windows")]
 struct Args {
     /// Present with vsync (sync interval 1) instead of immediately.
     #[arg(long)]
@@ -59,6 +72,9 @@ struct Args {
     /// Write one line of stage timestamps per presented frame to this CSV.
     #[arg(long)]
     timings_csv: Option<std::path::PathBuf>,
+    /// Open a console window and log there instead of the log file.
+    #[arg(long)]
+    console: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -110,26 +126,26 @@ unsafe extern "system" {
 #[derive(Debug)]
 enum UserEvent {
     Device(DeviceEvent),
-    Menu(String),
 }
-
-/// Menu bar "buttons": (id, label).
-const BUTTONS: [(&str, &str); 9] = [
-    ("home", "Home  (F1)"),
-    ("switcher", "App Switcher  (F2)"),
-    ("lock", "Lock  (F3)"),
-    ("voldown", "Vol −  (F4)"),
-    ("volup", "Vol +  (F5)"),
-    ("rotate", "Rotate ⟳  (F12, Shift+F12 ⟲)"),
-    ("stats", "Stats  (F10)"),
-    ("probe", "Latency probe  (F9)"),
-    ("fullscreen", "Fullscreen  (F11)"),
-];
 
 /// Probe taps: count, pause before each (screen must be still), hold.
 const PROBE_TAPS: u32 = 10;
 const PROBE_GAP: Duration = Duration::from_millis(1200);
 const PROBE_HOLD: Duration = Duration::from_millis(80);
+
+/// Window sizes, as a fraction of the monitor (the green light and
+/// Ctrl+wheel step through them).
+const SIZES: [f64; 4] = [0.55, 0.7, 0.85, 0.95];
+const DEFAULT_SIZE: usize = 2;
+/// Dark frame around the screen, like the edge of the phone (logical px).
+const BEZEL: f64 = 6.0;
+/// The bar stays this long after the pointer leaves the window.
+const BAR_LINGER: Duration = Duration::from_millis(600);
+/// One wheel notch moves the finger this far (fraction of the screen height).
+const SCROLL_PER_NOTCH: f64 = 0.12;
+/// A wheel scroll gesture lasts about this long; notches arriving meanwhile
+/// are added to the next one.
+const SCROLL_BUSY: Duration = Duration::from_millis(130);
 
 struct App {
     args: Args,
@@ -137,15 +153,22 @@ struct App {
     shared: Arc<Shared>,
     slot: Arc<FrameSlot>,
     window: Option<Arc<Window>>,
+    hwnd: isize,
     device: Option<DeviceHandle>,
-    _menu: Option<Menu>,
     gesture: Gesture,
     cursor: (f64, f64),
+    cursor_inside: bool,
     keys_down: HashSet<u16>,
     modifiers: winit::keyboard::ModifiersState,
-    status: String,
     phone: Option<String>,
-    sized_for: Option<(u32, u32)>,
+    link: Option<&'static str>,
+    size_level: usize,
+    /// Hover bar: shown above the screen while the pointer is over the
+    /// window; `bar_grew_up` remembers whether the window moved up for it.
+    bar_grew_up: bool,
+    hide_bar_at: Option<Instant>,
+    scroll_busy_until: Instant,
+    scroll_pending: f64,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
@@ -158,45 +181,53 @@ impl App {
 
     fn set_title(&self) {
         if let Some(w) = &self.window {
-            let who = self.phone.as_deref().unwrap_or("iPhone");
-            w.set_title(&format!("{who} — {}", self.status));
+            let t = match (&self.phone, self.link) {
+                (Some(p), Some(l)) => format!("Mirrorly — {p} · {l}"),
+                (Some(p), None) => format!("Mirrorly — {p}"),
+                _ => "Mirrorly".to_string(),
+            };
+            w.set_title(&t);
         }
     }
 
+    fn scale(&self) -> f64 {
+        self.window.as_ref().map(|w| w.scale_factor()).unwrap_or(1.0)
+    }
+
     fn start(&mut self, el: &ActiveEventLoop) -> Result<()> {
-        // Size the window to the phone's aspect, 85 % of the monitor height.
-        let monitor = el.primary_monitor().or_else(|| el.available_monitors().next());
-        let mon_h = monitor.as_ref().map(|m| m.size().height).unwrap_or(1080);
-        let h = (mon_h as f64 * 0.85) as u32;
-        let w = (h as f64 * 828.0 / 1792.0) as u32;
         let attrs = Window::default_attributes()
-            .with_title("iPhone — starting")
-            .with_inner_size(PhysicalSize::new(w, h));
+            .with_title("Mirrorly")
+            .with_decorations(false)
+            .with_resizable(false)
+            .with_window_icon(Icon::from_resource(1, None).ok())
+            .with_inner_size(PhysicalSize::new(400u32, 866u32));
         let window = Arc::new(el.create_window(attrs)?);
-        let hwnd = match window.window_handle()?.as_raw() {
+        self.hwnd = match window.window_handle()?.as_raw() {
             RawWindowHandle::Win32(h) => h.hwnd.get(),
             _ => anyhow::bail!("not a Win32 window"),
         };
-
-        let menu = Menu::new();
-        for (id, label) in BUTTONS {
-            menu.append(&MenuItem::with_id(id, label, true, None))?;
+        self.window = Some(window.clone());
+        {
+            let mut c = self.shared.chrome.lock().unwrap();
+            c.status = status::starting();
+            if onboarding::first_run() {
+                c.welcome = Some(onboarding::Welcome::default());
+            }
         }
-        unsafe { menu.init_for_hwnd(hwnd)? };
-        let proxy = self.proxy.clone();
-        MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
-            let _ = proxy.send_event(UserEvent::Menu(e.id.0));
-        }));
+        self.shared.view.lock().unwrap().bezel = BEZEL * window.scale_factor();
+        self.apply_shape();
+        self.apply_size();
 
         // GPU on the adapter that drives this window's monitor.
         let hmon = window.current_monitor().map(|m| windows::Win32::Graphics::Gdi::HMONITOR(m.hmonitor() as _));
         let gpu = gpu::Gpu::new(hmon)?;
         tracing::info!("GPU: {} (tearing {})", gpu.adapter_name, gpu.tearing);
-        let swapchain = gpu.swapchain(windows::Win32::Foundation::HWND(hwnd as _))?;
+        let swapchain = gpu.swapchain(windows::Win32::Foundation::HWND(self.hwnd as _))?;
         let renderer = render::Renderer::new(gpu.device.clone(), gpu.context.clone(), swapchain)?;
         {
             let size = window.inner_size();
             self.shared.view.lock().unwrap().window = (size.width, size.height);
+            self.shared.chrome.lock().unwrap().scale = window.scale_factor();
         }
 
         let lock = Arc::new(D3dLock::default());
@@ -211,13 +242,7 @@ impl App {
             self.slot.clone(),
             self.shared.clone(),
             lock.clone(),
-            present::PresentOpts {
-                vsync: self.args.vsync,
-                dot_radius: 14.0 * dpi,
-                dpi_scale: dpi as f32,
-                csv,
-                qpc_to_us,
-            },
+            present::PresentOpts { vsync: self.args.vsync, dot_radius: 14.0 * dpi, dpi_scale: dpi as f32, csv, qpc_to_us },
             now_us,
         )?);
 
@@ -264,70 +289,103 @@ impl App {
         *decoder_kf.lock().unwrap() = Some(handle.keyframes.clone());
         *self.shared.hid_stats.lock().unwrap() = Some(handle.hid_stats.clone());
         self.device = Some(handle);
-        self._menu = Some(menu);
-        self.window = Some(window);
         self.set_title();
         Ok(())
     }
 
-    /// Fit the window to the phone's aspect once per screen size.
-    fn fit_window(&mut self, screen: (u32, u32)) {
-        if self.sized_for == Some(screen) {
+    /// Size the window to the picture's aspect at the current size level.
+    fn apply_size(&mut self) {
+        let Some(w) = self.window.clone() else { return };
+        if w.fullscreen().is_some() {
             return;
         }
-        self.sized_for = Some(screen);
-        let (cw, ch) = self.shared.view.lock().unwrap().content();
-        if let Some(w) = &self.window {
-            let s = w.inner_size();
-            // Keep the longer window side, match the picture's aspect.
-            let long = s.width.max(s.height) as f64;
-            let size = if ch >= cw {
-                PhysicalSize::new((long * cw / ch).round() as u32, long as u32)
-            } else {
-                PhysicalSize::new(long as u32, (long * ch / cw).round() as u32)
-            };
-            let _ = w.request_inner_size(size);
+        let (mw, mh) = w
+            .current_monitor()
+            .map(|m| (m.size().width as f64, m.size().height as f64))
+            .unwrap_or((1920.0, 1080.0));
+        let ((cw, ch), b, bar) = {
+            let v = self.shared.view.lock().unwrap();
+            (v.content(), v.bezel, v.top_bar)
+        };
+        let f = SIZES[self.size_level];
+        let r = input::geom::fit(mw * f - 2.0 * b, mh * f - 2.0 * b, cw, ch);
+        let _ = w.request_inner_size(PhysicalSize::new(
+            (r.w + 2.0 * b).round() as u32,
+            (r.h + 2.0 * b + bar).round() as u32,
+        ));
+    }
+
+    /// Ask Windows 11 to round the window's corners. (A window clip region
+    /// would allow the phone's large radius, but measured: it forces DWM
+    /// composition, +9.7 ms Present -> scan-out and 0 % direct flips. The
+    /// phone's own screen corners are drawn in the shader instead.)
+    fn apply_shape(&self) {
+        use windows::Win32::{
+            Foundation::HWND,
+            Graphics::Dwm::{DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute},
+        };
+        if std::env::var_os("MIRROR_SQUARE").is_some() {
+            return;
+        }
+        let pref = DWMWCP_ROUND;
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                HWND(self.hwnd as _),
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                (&pref as *const windows::Win32::Graphics::Dwm::DWM_WINDOW_CORNER_PREFERENCE).cast(),
+                std::mem::size_of_val(&pref) as u32,
+            );
         }
     }
 
-    fn action(&mut self, id: &str) {
-        match id {
-            "home" => self.send(HidEvent::Button { button: Button::Home }),
-            "switcher" => self.send(HidEvent::AppSwitcher),
-            "lock" => self.send(HidEvent::Button { button: Button::Lock }),
-            "voldown" => self.send(HidEvent::Button { button: Button::VolumeDown }),
-            "volup" => self.send(HidEvent::Button { button: Button::VolumeUp }),
-            "stats" => {
-                let on = !self.shared.overlay.load(Relaxed);
-                self.shared.overlay.store(on, Relaxed);
-                self.slot.request_redraw();
-            }
-            "probe" => self.start_probe(),
-            "fullscreen" => {
-                // Borderless fullscreen lets DWM hand the swapchain to the
-                // display directly (independent flip) instead of composing.
+    fn control(&mut self, el: &ActiveEventLoop, c: Control) {
+        match c {
+            Control::Close => self.quit(el),
+            Control::Minimize => {
                 if let Some(w) = &self.window {
-                    let full = w.fullscreen().is_some();
-                    w.set_fullscreen((!full).then_some(winit::window::Fullscreen::Borderless(None)));
+                    w.set_minimized(true);
                 }
             }
-            "rotate" | "rotate-ccw" => {
-                // Turn the picture a quarter turn; touches follow through
-                // the same mapping. Swap the window's shape to match.
-                let rotation = {
-                    let mut v = self.shared.view.lock().unwrap();
-                    v.rotation = if id == "rotate" { v.rotation.next() } else { v.rotation.prev() };
-                    v.rotation
-                };
-                tracing::info!("view rotated to {}°", rotation.degrees());
-                self.release_all();
-                if let Some(w) = &self.window {
-                    let s = w.inner_size();
-                    let _ = w.request_inner_size(PhysicalSize::new(s.height, s.width));
-                }
-                self.slot.request_redraw();
+            Control::Zoom => {
+                self.size_level = (self.size_level + 1) % SIZES.len();
+                self.apply_size();
             }
-            _ => {}
+            Control::Rotate => self.rotate(true),
+            Control::AppSwitcher => self.send(HidEvent::AppSwitcher),
+            Control::Home => self.send(HidEvent::Button { button: Button::Home }),
+        }
+    }
+
+    fn quit(&mut self, el: &ActiveEventLoop) {
+        self.release_all();
+        self.slot.quit();
+        el.exit();
+    }
+
+    /// Turn the picture a quarter turn; touches follow through the same
+    /// mapping, and the window takes the new shape.
+    fn rotate(&mut self, clockwise: bool) {
+        let rotation = {
+            let mut v = self.shared.view.lock().unwrap();
+            v.rotation = if clockwise { v.rotation.next() } else { v.rotation.prev() };
+            v.rotation
+        };
+        tracing::info!("view rotated to {}°", rotation.degrees());
+        self.release_all();
+        self.apply_size();
+        self.slot.request_redraw();
+    }
+
+    fn toggle_fullscreen(&mut self) {
+        if let Some(w) = self.window.clone() {
+            let full = w.fullscreen().is_some();
+            if !full {
+                self.set_bar(false);
+            }
+            w.set_fullscreen((!full).then_some(winit::window::Fullscreen::Borderless(None)));
+            if full {
+                self.apply_size();
+            }
         }
     }
 
@@ -383,13 +441,116 @@ impl App {
         (m, upright)
     }
 
+    /// The hover bar's controls, when it is shown.
+    fn toolbar(&self) -> Option<layout::Toolbar> {
+        let bar = self.shared.view.lock().unwrap().bar()?;
+        Some(layout::toolbar(bar, self.scale()))
+    }
+
+    /// Show or hide the bar. Like macOS, it is a strip above the phone
+    /// screen: the window grows upward by its height (so the screen stays
+    /// where it is, and its top edge stays free for Control Center), or
+    /// downward when there is no room above.
+    fn set_bar(&mut self, show: bool) {
+        let Some(w) = self.window.clone() else { return };
+        let shown = self.shared.view.lock().unwrap().top_bar > 0.0;
+        if show == shown || (show && w.fullscreen().is_some()) {
+            return;
+        }
+        let h_bar = (layout::BAR_HEIGHT * w.scale_factor()).round();
+        let (Ok(pos), size) = (w.outer_position(), w.inner_size()) else { return };
+        let (x, mut y, width) = (pos.x, pos.y, size.width as i32);
+        let height;
+        if show {
+            let room_above = y - work_area_top(self.hwnd) >= h_bar as i32;
+            self.bar_grew_up = room_above;
+            if room_above {
+                y -= h_bar as i32;
+            }
+            height = size.height as i32 + h_bar as i32;
+        } else {
+            if self.bar_grew_up {
+                y += h_bar as i32;
+            }
+            height = size.height as i32 - h_bar as i32;
+        }
+        self.shared.view.lock().unwrap().top_bar = if show { h_bar } else { 0.0 };
+        self.shared.chrome.lock().unwrap().toolbar = show;
+        use windows::Win32::{
+            Foundation::HWND,
+            UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos},
+        };
+        unsafe {
+            let _ = SetWindowPos(HWND(self.hwnd as _), None, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        self.slot.request_redraw();
+    }
+
+    /// Bar on while the pointer is over the window (or a finger is down),
+    /// off a moment after it leaves; track the control under the pointer.
+    fn update_hover(&mut self) {
+        if self.cursor_inside || self.gesture.active() {
+            self.hide_bar_at = None;
+            self.set_bar(true);
+        } else if self.hide_bar_at.is_none() {
+            self.hide_bar_at = Some(Instant::now() + BAR_LINGER);
+        }
+        let hover = self.toolbar().and_then(|t| {
+            (self.cursor_inside && t.contains(self.cursor.0, self.cursor.1)).then(|| t.hit(self.cursor.0, self.cursor.1)).flatten()
+        });
+        let mut c = self.shared.chrome.lock().unwrap();
+        if c.hover != hover {
+            c.hover = hover;
+            drop(c);
+            self.slot.request_redraw();
+        }
+    }
+
     fn set_indicator(&self, f: impl FnOnce(&mut Option<Indicator>)) {
         f(&mut self.shared.view.lock().unwrap().indicator);
         self.slot.request_redraw();
     }
+
+    /// Mouse wheel: a short finger drag, so lists scroll as on the phone.
+    fn wheel(&mut self, notches: f64) {
+        self.scroll_pending += notches;
+        if Instant::now() < self.scroll_busy_until || self.scroll_pending == 0.0 {
+            return;
+        }
+        let (m, _) = self.mapper();
+        let start = m.to_panel(self.cursor.0, self.cursor.1, false);
+        let dy_px = self.scroll_pending * SCROLL_PER_NOTCH * m.view.h;
+        let end = m.to_panel(self.cursor.0, self.cursor.1 + dy_px, true);
+        self.scroll_pending = 0.0;
+        let (Some(s), Some(e)) = (start, end) else { return };
+        self.scroll_busy_until = Instant::now() + SCROLL_BUSY;
+        self.send(HidEvent::Scroll {
+            x: input::geom::to_u16(s.0),
+            y: input::geom::to_u16(s.1),
+            dx: e.0 - s.0,
+            dy: e.1 - s.1,
+        });
+    }
 }
 
 impl ApplicationHandler<UserEvent> for App {
+    /// Timers: hide the bar a moment after the pointer left.
+    fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+        use winit::event_loop::ControlFlow;
+        match self.hide_bar_at {
+            Some(t) if Instant::now() >= t => {
+                self.hide_bar_at = None;
+                if !self.cursor_inside && !self.gesture.active() {
+                    self.set_bar(false);
+                    self.update_hover();
+                }
+                el.set_control_flow(ControlFlow::Wait);
+            }
+            Some(t) => el.set_control_flow(ControlFlow::WaitUntil(t)),
+            None => el.set_control_flow(ControlFlow::Wait),
+        }
+    }
+
     fn resumed(&mut self, el: &ActiveEventLoop) {
         if self.window.is_none()
             && let Err(e) = self.start(el)
@@ -399,33 +560,47 @@ impl ApplicationHandler<UserEvent> for App {
         }
     }
 
-    fn user_event(&mut self, _el: &ActiveEventLoop, ev: UserEvent) {
-        match ev {
-            UserEvent::Menu(id) => self.action(&id),
-            UserEvent::Device(DeviceEvent::Status(s)) => {
-                self.status = s;
-                self.set_title();
+    fn user_event(&mut self, _el: &ActiveEventLoop, UserEvent::Device(ev): UserEvent) {
+        {
+            let mut c = self.shared.chrome.lock().unwrap();
+            if let Some(page) = status::describe(&ev) {
+                c.status = page;
             }
-            UserEvent::Device(DeviceEvent::Connected(info)) => {
-                {
-                    let mut v = self.shared.view.lock().unwrap();
-                    v.screen = (info.screen_w, info.screen_h);
+            if let Some(w) = c.welcome.as_mut() {
+                w.on_event(&ev);
+            }
+        }
+        self.slot.request_redraw();
+        match ev {
+            DeviceEvent::Status(_) => {}
+            DeviceEvent::Connected(info) => {
+                // First connection done: the welcome checklist retires.
+                if self.shared.chrome.lock().unwrap().welcome.take().is_some() {
+                    onboarding::mark_done();
                 }
-                self.fit_window((info.screen_w, info.screen_h));
+                let screen_changed = {
+                    let mut v = self.shared.view.lock().unwrap();
+                    let changed = v.screen != (info.screen_w, info.screen_h);
+                    v.screen = (info.screen_w, info.screen_h);
+                    changed
+                };
+                if screen_changed {
+                    self.apply_size();
+                }
                 let link = match info.transport {
                     device::Transport::Usb => "USB",
                     device::Transport::Wifi => "Wi-Fi",
                 };
                 *self.shared.transport.lock().unwrap() = Some(link);
-                self.phone = Some(format!("{} (iOS {})", info.name, info.ios_version));
-                self.status = format!("connected via {link}");
+                self.link = Some(link);
+                self.phone = Some(info.name.clone());
                 self.set_title();
             }
-            UserEvent::Device(DeviceEvent::Disconnected(reason)) => {
+            DeviceEvent::Disconnected(_) => {
                 *self.shared.transport.lock().unwrap() = None;
+                self.link = None;
                 self.gesture = Gesture::default();
                 self.keys_down.clear();
-                self.status = format!("disconnected: {reason}");
                 self.set_title();
             }
         }
@@ -433,19 +608,33 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::CloseRequested => {
-                self.release_all();
-                self.slot.quit();
-                el.exit();
-            }
+            WindowEvent::CloseRequested => self.quit(el),
             WindowEvent::Resized(s) => {
                 self.shared.view.lock().unwrap().window = (s.width, s.height);
                 self.slot.request_redraw();
             }
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.shared.chrome.lock().unwrap().scale = scale_factor;
+                self.shared.view.lock().unwrap().bezel = BEZEL * scale_factor;
+            }
             WindowEvent::Focused(false) => self.release_all(),
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
+            WindowEvent::CursorEntered { .. } => {
+                self.cursor_inside = true;
+                self.update_hover();
+            }
+            WindowEvent::CursorLeft { .. } => {
+                self.cursor_inside = false;
+                if self.gesture.active()
+                    && let Some(ev) = self.gesture.up(None)
+                {
+                    self.send(ev);
+                }
+                self.update_hover();
+            }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
+                self.cursor_inside = true;
                 if self.gesture.active() {
                     let (m, _) = self.mapper();
                     if let Some(p) = m.to_panel(position.x, position.y, true) {
@@ -459,16 +648,40 @@ impl ApplicationHandler<UserEvent> for App {
                         });
                     }
                 }
+                self.update_hover();
             }
-            WindowEvent::CursorLeft { .. } if self.gesture.active() => {
-                if let Some(ev) = self.gesture.up(None) {
-                    self.send(ev);
+            WindowEvent::MouseWheel { delta, .. } => {
+                let notches = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y as f64,
+                    MouseScrollDelta::PixelDelta(p) => p.y / 120.0,
+                };
+                if self.modifiers.control_key() {
+                    let n = SIZES.len();
+                    self.size_level = if notches > 0.0 { (self.size_level + 1).min(n - 1) } else { self.size_level.saturating_sub(1) };
+                    self.apply_size();
+                } else {
+                    self.wheel(notches);
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let (m, upright) = self.mapper();
                 match (button, state) {
                     (MouseButton::Left, ElementState::Pressed) => {
+                        // The hover bar takes the press: a control, or the
+                        // bar's background, which moves the window.
+                        if let Some(tb) = self.toolbar()
+                            && tb.contains(self.cursor.0, self.cursor.1)
+                        {
+                            match tb.hit(self.cursor.0, self.cursor.1) {
+                                Some(c) => self.control(el, c),
+                                None => {
+                                    if let Some(w) = &self.window {
+                                        let _ = w.drag_window();
+                                    }
+                                }
+                            }
+                            return;
+                        }
                         if let Some(p) = m.to_panel(self.cursor.0, self.cursor.1, false) {
                             // The indicator goes up before the event is even
                             // queued: it is the perceived-latency trick.
@@ -476,6 +689,7 @@ impl ApplicationHandler<UserEvent> for App {
                             self.set_indicator(|i| *i = Some(Indicator { panel: p, down_us: t, released_us: None }));
                             let ev = self.gesture.down(p, upright);
                             self.send(ev);
+                            self.update_hover();
                         }
                     }
                     (MouseButton::Left, ElementState::Released) => {
@@ -489,6 +703,7 @@ impl ApplicationHandler<UserEvent> for App {
                                 i.released_us = Some(t);
                             }
                         });
+                        self.update_hover();
                     }
                     (MouseButton::Right, ElementState::Pressed) => self.send(HidEvent::Button { button: Button::Home }),
                     _ => {}
@@ -497,7 +712,12 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 let PhysicalKey::Code(code) = event.physical_key else { return };
                 let down = event.state == ElementState::Pressed;
-                let shortcut = match code {
+                let ctrl = self.modifiers.control_key();
+                // Mac-style shortcuts (Ctrl stands in for Command), plus F-keys.
+                let shortcut: Option<&str> = match code {
+                    KeyCode::Digit1 if ctrl => Some("home"),
+                    KeyCode::Digit2 if ctrl => Some("switcher"),
+                    KeyCode::Digit3 if ctrl => Some("spotlight"),
                     KeyCode::F1 => Some("home"),
                     KeyCode::F2 => Some("switcher"),
                     KeyCode::F3 => Some("lock"),
@@ -512,7 +732,29 @@ impl ApplicationHandler<UserEvent> for App {
                 };
                 if let Some(id) = shortcut {
                     if down && !event.repeat {
-                        self.action(id);
+                        match id {
+                            "home" => self.send(HidEvent::Button { button: Button::Home }),
+                            "switcher" => self.send(HidEvent::AppSwitcher),
+                            // Ctrl is already held on the phone as Command:
+                            // add Space for Command-Space (Spotlight).
+                            "spotlight" => {
+                                self.send(HidEvent::Key { usage: 0x2C, down: true });
+                                self.send(HidEvent::Key { usage: 0x2C, down: false });
+                            }
+                            "lock" => self.send(HidEvent::Button { button: Button::Lock }),
+                            "voldown" => self.send(HidEvent::Button { button: Button::VolumeDown }),
+                            "volup" => self.send(HidEvent::Button { button: Button::VolumeUp }),
+                            "probe" => self.start_probe(),
+                            "stats" => {
+                                let on = !self.shared.overlay.load(Relaxed);
+                                self.shared.overlay.store(on, Relaxed);
+                                self.slot.request_redraw();
+                            }
+                            "fullscreen" => self.toggle_fullscreen(),
+                            "rotate" => self.rotate(true),
+                            "rotate-ccw" => self.rotate(false),
+                            _ => {}
+                        }
                     }
                     return;
                 }
@@ -531,6 +773,19 @@ impl ApplicationHandler<UserEvent> for App {
             }
             _ => {}
         }
+    }
+}
+
+/// Top of the work area (excluding the taskbar) of the window's monitor.
+fn work_area_top(hwnd: isize) -> i32 {
+    use windows::Win32::{
+        Foundation::HWND,
+        Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow},
+    };
+    unsafe {
+        let mon = MonitorFromWindow(HWND(hwnd as _), MONITOR_DEFAULTTONEAREST);
+        let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+        if GetMonitorInfoW(mon, &mut mi).as_bool() { mi.rcWork.top } else { 0 }
     }
 }
 
@@ -553,15 +808,34 @@ fn spawn_csv_logger(path: &std::path::Path) -> Result<mpsc::Sender<metrics::Fram
     Ok(tx)
 }
 
+/// Log to `%LOCALAPPDATA%\Mirrorly\logs\Mirrorly.log`, or to a console when
+/// asked (or in debug builds, which have one).
+fn init_logging(console: bool) {
+    let filter = || tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+    if console && !cfg!(debug_assertions) {
+        unsafe {
+            let _ = windows::Win32::System::Console::AllocConsole();
+        }
+    }
+    if console || cfg!(debug_assertions) {
+        tracing_subscriber::fmt().with_env_filter(filter()).init();
+        return;
+    }
+    let dir = device::paths::data_dir().join("logs");
+    let file = std::fs::create_dir_all(&dir).and_then(|_| std::fs::File::create(dir.join("Mirrorly.log")));
+    match file {
+        Ok(f) => tracing_subscriber::fmt().with_env_filter(filter()).with_ansi(false).with_writer(std::sync::Mutex::new(f)).init(),
+        Err(_) => tracing_subscriber::fmt().with_env_filter(filter()).init(),
+    }
+    std::panic::set_hook(Box::new(|info| tracing::error!("panic: {info}")));
+}
+
 fn main() -> Result<()> {
     let _ = epoch();
     unsafe { timeBeginPeriod(1) };
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .init();
     let args = Args::parse();
+    init_logging(args.console);
+    tracing::info!("Mirrorly {} starting", env!("CARGO_PKG_VERSION"));
 
     let event_loop = EventLoop::<UserEvent>::with_user_event().build().context("event loop")?;
     let mut app = App {
@@ -570,15 +844,20 @@ fn main() -> Result<()> {
         shared: Arc::new(Shared::default()),
         slot: Arc::new(FrameSlot::default()),
         window: None,
+        hwnd: 0,
         device: None,
-        _menu: None,
         gesture: Gesture::default(),
         cursor: (0.0, 0.0),
+        cursor_inside: false,
         keys_down: HashSet::new(),
         modifiers: Default::default(),
-        status: "starting".into(),
         phone: None,
-        sized_for: None,
+        link: None,
+        size_level: DEFAULT_SIZE,
+        bar_grew_up: false,
+        hide_bar_at: None,
+        scroll_busy_until: Instant::now(),
+        scroll_pending: 0.0,
         threads: Vec::new(),
     };
     event_loop.run_app(&mut app)?;

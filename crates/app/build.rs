@@ -4,6 +4,28 @@
 use std::path::PathBuf;
 
 fn main() {
+    embed_resources();
+    copy_ffmpeg_dlls();
+}
+
+/// Icon (resource 1, also used as the window icon) and the version info
+/// shown in Explorer's file properties.
+fn embed_resources() {
+    let icon = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("../../packaging/mirrorly.ico");
+    println!("cargo:rerun-if-changed={}", icon.display());
+    let mut res = winresource::WindowsResource::new();
+    res.set_icon_with_id(icon.to_str().unwrap(), "1")
+        .set("ProductName", "Mirrorly")
+        .set("FileDescription", "Mirrorly")
+        .set("CompanyName", "AnasSAV")
+        .set("LegalCopyright", "Copyright (c) 2026 AnasSAV. MIT License.")
+        .set("OriginalFilename", "Mirrorly.exe");
+    if let Err(e) = res.compile() {
+        println!("cargo:warning=could not embed the icon/version resource: {e}");
+    }
+}
+
+fn copy_ffmpeg_dlls() {
     println!("cargo:rerun-if-env-changed=FFMPEG_DIR");
     let Ok(ffmpeg) = std::env::var("FFMPEG_DIR") else {
         println!("cargo:warning=FFMPEG_DIR not set; FFmpeg DLLs not copied");

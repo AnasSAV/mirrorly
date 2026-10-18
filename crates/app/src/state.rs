@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, atomic::AtomicBool};
 use device::hid::HidStats;
 use input::geom::{Mapper, Rotation, fit};
 
-use crate::metrics::Counters;
+use crate::{layout::Control, metrics::Counters, onboarding::Welcome};
 
 /// iPhone 11 panel, used only until the phone reports its own size.
 const DEFAULT_SCREEN: (u32, u32) = (828, 1792);
@@ -31,11 +31,24 @@ pub struct View {
     /// and no API to read its orientation is known, so the user picks this.
     pub rotation: Rotation,
     pub indicator: Option<Indicator>,
+    /// Dark frame around the screen, physical px.
+    pub bezel: f64,
+    /// Height of the hover bar above the screen while it is shown (0 when
+    /// hidden), physical px.
+    pub top_bar: f64,
 }
 
 impl Default for View {
     fn default() -> Self {
-        Self { window: (1, 1), tex: None, screen: DEFAULT_SCREEN, rotation: Rotation::R0, indicator: None }
+        Self {
+            window: (1, 1),
+            tex: None,
+            screen: DEFAULT_SCREEN,
+            rotation: Rotation::R0,
+            indicator: None,
+            bezel: 0.0,
+            top_bar: 0.0,
+        }
     }
 }
 
@@ -50,9 +63,20 @@ impl View {
         if self.sideways() { (h, w) } else { (w, h) }
     }
 
+    /// The screen sits inside the window, inset by the bezel, below the
+    /// hover bar when it is shown.
     pub fn mapper(&self) -> Mapper {
         let (cw, ch) = self.content();
-        Mapper { view: fit(self.window.0 as f64, self.window.1 as f64, cw, ch), rotation: self.rotation }
+        let b = self.bezel;
+        let mut view = fit(self.window.0 as f64 - 2.0 * b, self.window.1 as f64 - 2.0 * b - self.top_bar, cw, ch);
+        view.x += b;
+        view.y += b + self.top_bar;
+        Mapper { view, rotation: self.rotation }
+    }
+
+    /// The hover bar's strip at the top of the window, if shown.
+    pub fn bar(&self) -> Option<input::geom::Rect> {
+        (self.top_bar > 0.0).then(|| input::geom::Rect { x: 0.0, y: 0.0, w: self.window.0 as f64, h: self.top_bar })
     }
 
     /// Fraction of the texture that is real picture. The content sits in the
@@ -69,8 +93,24 @@ impl View {
     }
 }
 
+/// Window chrome state, written by the main thread, drawn by the present
+/// thread.
+#[derive(Debug, Default)]
+pub struct Chrome {
+    /// Hover bar visible.
+    pub toolbar: bool,
+    pub hover: Option<Control>,
+    /// Status page (title, detail) shown while there is no video.
+    pub status: (String, String),
+    /// First-run checklist, shown instead of the plain status page.
+    pub welcome: Option<Welcome>,
+    /// DPI scale of the window.
+    pub scale: f64,
+}
+
 #[derive(Default)]
 pub struct Shared {
+    pub chrome: Mutex<Chrome>,
     pub view: Mutex<View>,
     /// Debug overlay on/off (F10).
     pub overlay: AtomicBool,

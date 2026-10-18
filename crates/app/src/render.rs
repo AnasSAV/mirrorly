@@ -25,7 +25,10 @@ const SHADERS: &str = r#"
 cbuffer Quad : register(b0) {
     float4 corner[4]; // xy = NDC, zw = uv; order TL, TR, BL, BR
     float4 color;
+    float4 rect;      // the quad in pixels: x, y, w, h
+    float4 shape;     // x = corner radius in pixels
 };
+static const float3 BEZEL = float3(0.04, 0.04, 0.045);
 struct VsOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
 VsOut vs_main(uint id : SV_VertexID) {
     VsOut o;
@@ -62,7 +65,13 @@ float4 ps_video(VsOut i) : SV_Target {
     float3 rgb = float3(y + 1.5748 * c.y,
                         y - 0.1873 * c.x - 0.4681 * c.y,
                         y + 1.8556 * c.x);
-    return float4(saturate(rgb), 1);
+    // Round the screen's corners like the phone's display: signed distance
+    // to a rounded rectangle, one pixel of anti-aliasing.
+    float2 half_size = rect.zw * 0.5;
+    float2 q = abs(i.pos.xy - rect.xy - half_size) - (half_size - shape.x);
+    float d = length(max(q, 0)) + min(max(q.x, q.y), 0) - shape.x;
+    float a = saturate(0.5 - d);
+    return float4(lerp(BEZEL, saturate(rgb), a), 1);
 }
 float4 ps_dot(VsOut i) : SV_Target {
     float d = length(i.uv - 0.5) * 2.0;           // 0 at centre, 1 at the rim
@@ -80,6 +89,8 @@ float4 ps_dot(VsOut i) : SV_Target {
 struct QuadCb {
     corner: [[f32; 4]; 4],
     color: [f32; 4],
+    rect: [f32; 4],
+    shape: [f32; 4],
 }
 
 pub struct Renderer {
@@ -108,6 +119,8 @@ pub struct Scene<'a> {
     pub uv_max: (f32, f32),
     /// How the picture is turned on screen.
     pub rotation: Rotation,
+    /// Radius of the screen's rounded corners, pixels.
+    pub corner_radius: f64,
     /// Dots to draw over the picture: centre and radius in back-buffer
     /// pixels, and RGBA (touch indicator, connection quality).
     pub dots: Vec<(f64, f64, f64, [f32; 4])>,
@@ -220,7 +233,7 @@ impl Renderer {
         let (bw, bh) = (self.size.0 as f64, self.size.1 as f64);
         unsafe {
             let ctx = &self.context.clone();
-            ctx.ClearRenderTargetView(&rtv, &[0.0, 0.0, 0.0, 1.0]);
+            ctx.ClearRenderTargetView(&rtv, &[0.04, 0.04, 0.045, 1.0]);
             ctx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), None);
             ctx.RSSetViewports(Some(&[D3D11_VIEWPORT {
                 TopLeftX: 0.0,
@@ -234,6 +247,8 @@ impl Renderer {
             ctx.IASetInputLayout(None);
             ctx.VSSetShader(&self.vs, None);
             ctx.VSSetConstantBuffers(0, Some(&[Some(self.cb.clone())]));
+            // The pixel shaders read colour, rect and corner radius from it too.
+            ctx.PSSetConstantBuffers(0, Some(&[Some(self.cb.clone())]));
             ctx.PSSetSamplers(0, Some(&[Some(self.sampler.clone())]));
 
             if let Some((tex, index)) = scene.picture {
@@ -243,7 +258,9 @@ impl Renderer {
                     let (x, y) = scene.rotation.picture_to_panel(u, v);
                     (x as f32 * scene.uv_max.0, y as f32 * scene.uv_max.1)
                 });
-                self.upload(quad(scene.view, bw, bh, uvs), [0.0; 4])?;
+                let v = scene.view;
+                let rect = [v.x as f32, v.y as f32, v.w as f32, v.h as f32];
+                self.upload(quad(v, bw, bh, uvs), [0.0; 4], rect, [scene.corner_radius as f32, 0.0, 0.0, 0.0])?;
                 ctx.OMSetBlendState(None, None, 0xffff_ffff);
                 ctx.PSSetShader(&self.ps_video, None);
                 ctx.PSSetShaderResources(0, Some(&[Some(y), Some(uv)]));
@@ -254,7 +271,7 @@ impl Renderer {
             for &(x, y, r, color) in &scene.dots {
                 let rect = Rect { x: x - r, y: y - r, w: 2.0 * r, h: 2.0 * r };
                 let uvs = DISPLAY_CORNERS.map(|(u, v)| (u as f32, v as f32));
-                self.upload(quad(rect, bw, bh, uvs), color)?;
+                self.upload(quad(rect, bw, bh, uvs), color, [0.0; 4], [0.0; 4])?;
                 ctx.OMSetBlendState(&self.blend, Some(&[0.0; 4]), 0xffff_ffff);
                 ctx.PSSetShader(&self.ps_dot, None);
                 ctx.Draw(4, 0);
@@ -263,11 +280,11 @@ impl Renderer {
         Ok(())
     }
 
-    fn upload(&self, corner: [[f32; 4]; 4], color: [f32; 4]) -> Result<()> {
+    fn upload(&self, corner: [[f32; 4]; 4], color: [f32; 4], rect: [f32; 4], shape: [f32; 4]) -> Result<()> {
         unsafe {
             let mut m = D3D11_MAPPED_SUBRESOURCE::default();
             self.context.Map(&self.cb, 0, D3D11_MAP_WRITE_DISCARD, 0, Some(&mut m))?;
-            *(m.pData as *mut QuadCb) = QuadCb { corner, color };
+            *(m.pData as *mut QuadCb) = QuadCb { corner, color, rect, shape };
             self.context.Unmap(&self.cb, 0);
         }
         Ok(())

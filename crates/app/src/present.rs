@@ -16,8 +16,9 @@ use windows::Win32::{
 };
 
 use crate::{
-    metrics::{DisplaySample, FrameRecord, Metrics, QualityMeter, TapResult},
-    overlay::Overlay,
+    metrics::{DisplaySample, FrameRecord, Metrics, Quality, QualityMeter, TapResult},
+    layout,
+    ui::{Ui, UiFrame},
     render::{Renderer, Scene},
     state::{Indicator, Shared},
 };
@@ -70,7 +71,7 @@ pub fn spawn(
 ) -> std::io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new().name("present".into()).spawn(move || {
         let mut r = renderer.into_inner();
-        let mut overlay: Option<Overlay> = None;
+        let mut ui: Option<Ui> = None;
         let mut metrics = Metrics::default();
         let mut last_seq = 0u64;
         let mut sizes: VecDeque<usize> = VecDeque::with_capacity(32);
@@ -119,18 +120,23 @@ pub fn spawn(
                     let (x, y) = m.to_window(ind.panel.0, ind.panel.1);
                     dots.push((x, y, opts.dot_radius, [1.0, 1.0, 1.0, 0.85]));
                 }
-                if frame.is_some() {
-                    // Connection-quality light, top-right of the picture.
+                if frame.is_some() && quality.level != Quality::Good {
+                    // Connection-quality light, shown only when the link
+                    // degrades: in the bar when it is open, else at the top
+                    // centre (where the phone's notch is).
                     let r = opts.dot_radius * 0.4;
-                    let inset = opts.dot_radius;
-                    dots.push((m.view.x + m.view.w - inset, m.view.y + inset, r, quality.level.color()));
+                    let (cx, cy) = match v.bar() {
+                        Some(b) => (b.x + b.w / 2.0, b.y + b.h / 2.0),
+                        None => (m.view.x + m.view.w / 2.0, m.view.y + opts.dot_radius),
+                    };
+                    dots.push((cx, cy, r, quality.level.color()));
                 }
                 (v.window, m.view, v.uv_max(), v.rotation, dots)
             };
 
             if r.size != window {
-                if let Some(o) = overlay.as_mut() {
-                    o.release_target();
+                if let Some(u) = ui.as_mut() {
+                    u.release_target();
                 }
                 let _g = lock.lock();
                 if let Err(e) = r.resize(window.0, window.1) {
@@ -157,7 +163,25 @@ pub fn spawn(
                 view: scene_view,
                 uv_max,
                 rotation,
+                corner_radius: layout::corner_radius(scene_view),
                 dots,
+            };
+            // Window chrome: hover bar (above the screen), status or welcome
+            // page (no video), stats.
+            let bar_rect = shared.view.lock().unwrap().bar();
+            let (bar, status, welcome) = {
+                let c = shared.chrome.lock().unwrap();
+                let bar = bar_rect.map(|b| (layout::toolbar(b, c.scale.max(1.0)), c.hover));
+                let status = frame.is_none().then(|| c.status.clone());
+                let welcome = if frame.is_none() { c.welcome.clone() } else { None };
+                (bar, status, welcome)
+            };
+            let ui_frame = UiFrame {
+                view: scene_view,
+                toolbar: bar,
+                status: status.as_ref().map(|(t, d)| (t.as_str(), d.as_str())),
+                welcome: welcome.as_ref(),
+                stats: overlay_text.as_deref(),
             };
             let presented = {
                 let _g = lock.lock();
@@ -165,17 +189,17 @@ pub fn spawn(
                     tracing::warn!("draw failed: {e:#}");
                     continue;
                 }
-                if let Some(text) = &overlay_text {
-                    if overlay.is_none() {
-                        match Overlay::new(&r.device, opts.dpi_scale) {
-                            Ok(o) => overlay = Some(o),
-                            Err(e) => tracing::warn!("overlay unavailable: {e:#}"),
+                if !ui_frame.is_empty() {
+                    if ui.is_none() {
+                        match Ui::new(&r.device, opts.dpi_scale) {
+                            Ok(u) => ui = Some(u),
+                            Err(e) => tracing::warn!("window chrome unavailable: {e:#}"),
                         }
                     }
-                    if let Some(o) = overlay.as_mut()
-                        && let Err(e) = o.draw(&r.swapchain.sc, text)
+                    if let Some(u) = ui.as_mut()
+                        && let Err(e) = u.draw(&r.swapchain.sc, &ui_frame)
                     {
-                        tracing::warn!("overlay draw failed: {e:#}");
+                        tracing::warn!("chrome draw failed: {e:#}");
                     }
                 }
                 let (sync, flags) = if opts.vsync {
