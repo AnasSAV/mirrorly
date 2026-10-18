@@ -22,11 +22,17 @@ use crate::{
     ddi,
     feedback::{self, Feedback, RctlMode},
     hid::{self, HidStats, Indigo, Stamped, Uhs},
-    media,
+    media, wifi,
 };
 
 const DISPLAY_SERVICE: &str = "com.apple.coredevice.displayservice";
 const VIDEO_PT: u8 = 100;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transport {
+    Usb,
+    Wifi,
+}
 
 #[derive(Debug, Clone)]
 pub struct DeviceInfo {
@@ -34,9 +40,10 @@ pub struct DeviceInfo {
     pub name: String,
     pub product_type: String,
     pub ios_version: String,
-    /// Panel size in pixels (portrait), from lockdown.
+    /// Panel size in pixels (portrait), from lockdown (cached for Wi-Fi).
     pub screen_w: u32,
     pub screen_h: u32,
+    pub transport: Transport,
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +81,9 @@ impl KeyframeRequester {
 pub struct Options {
     /// Install the Developer Disk Image automatically when it is missing.
     pub auto_install_ddi: bool,
+    /// Use Wi-Fi when no USB device is attached (and create the Wi-Fi
+    /// pairing during the first USB session). USB is always preferred.
+    pub wifi: bool,
     pub rctl: RctlMode,
     /// Wait after the media stream starts before input is accepted (iOS's
     /// HID auth gate re-matches asynchronously; Phase 0 used 500 ms).
@@ -196,17 +206,36 @@ async fn run_once<S: MediaSink>(
         }
         Ok((uhs, indigo)) => {
             let (rx_q, stats2, now_us) = (hid_rx.clone(), stats.clone(), opts.now_us);
+            // Over Wi-Fi, iOS ignores universalhidservice touch reports but
+            // accepts Indigo digitizer events (measured 2026-10-18: a tap on
+            // Settings did nothing via UHS, opened it via Indigo; drags work).
+            // USB keeps the UHS path verified in Phases 0-1.
+            let touch_path = match std::env::var("MIRROR_TOUCH").as_deref() {
+                Ok("indigo") => hid::TouchPath::Indigo,
+                Ok("uhs") => hid::TouchPath::Uhs,
+                _ if info.transport == Transport::Wifi => hid::TouchPath::Indigo,
+                _ => hid::TouchPath::Uhs,
+            };
+            tracing::info!("touch path: {touch_path:?}");
             let mut hid_task = tokio::spawn(async move {
                 let mut rx = rx_q.lock().await;
                 // Drop anything queued before input was possible.
                 while rx.try_recv().is_ok() {}
-                hid::run(uhs, indigo, &mut rx, now_us, stats2).await
+                hid::run(uhs, indigo, &mut rx, now_us, stats2, touch_path).await
             });
+            let on_wifi = info.transport == Transport::Wifi;
             on_event(DeviceEvent::Connected(info));
             tokio::select! {
                 r = &mut rx_task => {
                     hid_task.abort();
                     r.expect("receive task panicked")
+                }
+                // USB is preferred: leave Wi-Fi as soon as a cable appears.
+                _ = usb_appears(), if on_wifi => {
+                    hid_task.abort();
+                    let _ = cancel_tx.send(());
+                    let (s, _) = rx_task.await.expect("receive task panicked");
+                    (s, "USB connected; switching to USB".into())
                 }
                 r = &mut hid_task => {
                     let _ = cancel_tx.send(());
@@ -229,6 +258,16 @@ async fn run_once<S: MediaSink>(
     (sink, reason)
 }
 
+/// Resolves once a USB-attached iPhone shows up in usbmuxd.
+async fn usb_appears() {
+    loop {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        if usb_device().await.is_ok() {
+            return;
+        }
+    }
+}
+
 async fn connect_hid(t: &mut crate::conn::Tunnel, settle: Duration) -> Result<(Uhs, Indigo)> {
     // iOS needs a moment before the HID surfaces accept injected input.
     tokio::time::sleep(settle).await;
@@ -240,11 +279,63 @@ async fn connect_hid(t: &mut crate::conn::Tunnel, settle: Duration) -> Result<(U
 /// Connect, check prerequisites and start the media stream. `Ok(Err(..))`
 /// is a planned early end (e.g. the DDI was just installed).
 async fn prepare(on_event: &impl Fn(DeviceEvent), opts: &Options) -> Result<Result<Prepared, String>> {
-    let dev = usb_device().await?;
-    let provider = NoDelayUsbmux::new(&dev);
-    let info = read_info(&provider, &dev.udid).await?;
-
-    let mut t = open_tunnel(&provider).await?;
+    let (mut t, info) = match usb_device().await {
+        Ok(dev) => {
+            let provider = NoDelayUsbmux::new(&dev);
+            let info = read_info(&provider, &dev.udid).await?;
+            if opts.wifi {
+                if let Err(e) = wifi::save_info(&info) {
+                    tracing::warn!("could not cache device info for Wi-Fi: {e:#}");
+                }
+                if !wifi::has_record(&dev.udid) {
+                    on_event(DeviceEvent::Status("Setting up Wi-Fi (one time)…".into()));
+                    // Own task: a panic in third-party pairing code must not
+                    // take the network thread (and reconnects) down with it.
+                    let (p, udid) = (provider.clone(), dev.udid.clone());
+                    match tokio::spawn(async move { wifi::pair_over_usb(&p, &udid).await }).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => tracing::warn!("Wi-Fi pairing failed (USB still works): {e:#}"),
+                        Err(e) => tracing::warn!("Wi-Fi pairing crashed (USB still works): {e}"),
+                    }
+                }
+            }
+            (open_tunnel(&provider).await?, info)
+        }
+        Err(usb_err) if opts.wifi => {
+            let mut paired = wifi::load_paired().await;
+            if paired.is_empty() {
+                return Err(usb_err.context("no Wi-Fi pairing yet: connect the iPhone by USB once"));
+            }
+            on_event(DeviceEvent::Status("Looking for the iPhone on Wi-Fi…".into()));
+            let found = {
+                let snapshot: Vec<wifi::Paired> = std::mem::take(&mut paired);
+                let (found, snapshot) = tokio::task::spawn_blocking(move || {
+                    let r = wifi::discover(&snapshot, Duration::from_secs(4));
+                    (r, snapshot)
+                })
+                .await?;
+                paired = snapshot;
+                found?
+            };
+            let Some((ip, port, idx)) = found else {
+                bail!(
+                    "no iPhone on USB, and none found on Wi-Fi (same network? phone unlocked? Windows network set to Private?)"
+                );
+            };
+            on_event(DeviceEvent::Status(format!("Connecting over Wi-Fi ({ip})…")));
+            let p = paired.swap_remove(idx);
+            let info = p.info;
+            let mut record = p.record;
+            let tunnel = tokio::spawn(async move { wifi::open_tunnel(ip, port, &mut record).await })
+                .await
+                .map_err(|e| anyhow!("Wi-Fi tunnel setup crashed: {e}"))??;
+            (tunnel, info)
+        }
+        Err(usb_err) => return Err(usb_err),
+    };
+    for (stage, ms) in &t.timings {
+        tracing::info!("{:?} tunnel: {stage} {ms:.0} ms", info.transport);
+    }
     if !t.handshake.services.contains_key(DISPLAY_SERVICE) {
         if ddi::installed(&mut t).await?.is_some() {
             bail!("the phone offers no display service even with the Developer Disk Image installed");
@@ -332,5 +423,5 @@ async fn read_info(provider: &NoDelayUsbmux, udid: &str) -> Result<DeviceInfo> {
         (Some(w), Some(h)) => (w, h),
         _ => bail!("lockdown did not report the screen size"),
     };
-    Ok(DeviceInfo { udid: udid.to_string(), name, product_type, ios_version, screen_w, screen_h })
+    Ok(DeviceInfo { udid: udid.to_string(), name, product_type, ios_version, screen_w, screen_h, transport: Transport::Usb })
 }

@@ -8,8 +8,9 @@ pub mod feedback;
 pub mod hid;
 pub mod media;
 pub mod session;
+pub mod wifi;
 
 pub use feedback::RctlMode;
 pub use session::{
-    DeviceEvent, DeviceHandle, DeviceInfo, InputSender, KeyframeRequester, MediaSink, Options, start,
+    DeviceEvent, DeviceHandle, DeviceInfo, InputSender, KeyframeRequester, MediaSink, Options, Transport, start,
 };

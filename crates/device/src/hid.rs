@@ -43,7 +43,9 @@ pub struct HidStats {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Op {
     Touch { contact: bool, x: u16, y: u16 },
-    Edge { phase: DigitizerEventType, x: f64, y: f64 },
+    /// Indigo digitizer event: bottom-edge gestures, and touches on the
+    /// Indigo path (`edge = None`).
+    Edge { phase: DigitizerEventType, x: f64, y: f64, edge: DigitizerEdge },
     Button { page: u64, usage: u64, down: bool },
     Key { usage: u16, down: bool },
 }
@@ -63,13 +65,24 @@ impl Ord for Due {
     }
 }
 
+/// Which service carries ordinary touches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TouchPath {
+    /// 58-byte touchscreen reports on `universalhidservice` (verified over USB).
+    Uhs,
+    /// `IndigoDigitizerEvent` with `edge = none` on `hid.indigo`.
+    Indigo,
+}
+
 pub(crate) async fn run(
     mut uhs: Uhs,
     mut indigo: Indigo,
     rx: &mut mpsc::UnboundedReceiver<Stamped>,
     now_us: fn() -> u64,
     stats: Arc<HidStats>,
+    touch_path: TouchPath,
 ) -> Result<()> {
+    let mut indigo_touch_down = false;
     let mut sched: BinaryHeap<Reverse<Due>> = BinaryHeap::new();
     let mut seq = 0u64;
     let mut batch = Vec::new();
@@ -99,6 +112,7 @@ pub(crate) async fn run(
                     stats.last_queue_us.store(now_us().saturating_sub(t), Relaxed);
                     let now = Instant::now();
                     for (delay, op) in expand(ev) {
+                        let op = route_touch(op, touch_path, &mut indigo_touch_down);
                         if delay.is_zero() {
                             exec(&mut uhs, &mut indigo, op).await?;
                             stats.sent.fetch_add(1, Relaxed);
@@ -119,6 +133,22 @@ pub(crate) async fn run(
             }
         }
     }
+}
+
+/// On the Indigo path, turn touchscreen samples into digitizer events:
+/// first contact = Start, later contacts = Position, release = End.
+fn route_touch(op: Op, path: TouchPath, down: &mut bool) -> Op {
+    let Op::Touch { contact, x, y } = op else { return op };
+    if path == TouchPath::Uhs {
+        return op;
+    }
+    let phase = match (contact, *down) {
+        (true, false) => DigitizerEventType::Start,
+        (true, true) => DigitizerEventType::Position,
+        (false, _) => DigitizerEventType::End,
+    };
+    *down = contact;
+    Op::Edge { phase, x: x as f64 / 65535.0, y: y as f64 / 65535.0, edge: DigitizerEdge::None }
 }
 
 /// A move is dropped only when a newer sample of the same contact is already
@@ -148,7 +178,7 @@ fn expand(ev: HidEvent) -> Vec<(Duration, Op)> {
                 EdgePhase::Move => DigitizerEventType::Position,
                 EdgePhase::End => DigitizerEventType::End,
             };
-            vec![(now, Op::Edge { phase, x, y })]
+            vec![(now, Op::Edge { phase, x, y, edge: DigitizerEdge::Bottom })]
         }
         HidEvent::Key { usage, down } => vec![(now, Op::Key { usage, down })],
         HidEvent::Button { button } => {
@@ -169,15 +199,15 @@ fn app_switcher_script() -> Vec<(Duration, Op)> {
     const SWIPE_MS: u64 = 400;
     const HOLD_MS: u64 = 800;
     const END_Y: f64 = 0.70;
-    let mut ops = vec![(Duration::ZERO, Op::Edge { phase: DigitizerEventType::Start, x: 0.5, y: 1.0 })];
+    let mut ops = vec![(Duration::ZERO, Op::Edge { phase: DigitizerEventType::Start, x: 0.5, y: 1.0, edge: DigitizerEdge::Bottom })];
     let mut t = STEP_MS;
     while t <= SWIPE_MS + HOLD_MS {
         let f = (t as f64 / SWIPE_MS as f64).min(1.0);
         let y = 1.0 + (END_Y - 1.0) * f;
-        ops.push((Duration::from_millis(t), Op::Edge { phase: DigitizerEventType::Position, x: 0.5, y }));
+        ops.push((Duration::from_millis(t), Op::Edge { phase: DigitizerEventType::Position, x: 0.5, y, edge: DigitizerEdge::Bottom }));
         t += STEP_MS;
     }
-    ops.push((Duration::from_millis(t), Op::Edge { phase: DigitizerEventType::End, x: 0.5, y: END_Y }));
+    ops.push((Duration::from_millis(t), Op::Edge { phase: DigitizerEventType::End, x: 0.5, y: END_Y, edge: DigitizerEdge::Bottom }));
     ops
 }
 
@@ -187,9 +217,9 @@ async fn exec(uhs: &mut Uhs, indigo: &mut Indigo, op: Op) -> Result<()> {
             let state = if contact { TOUCHSCREEN_STATE_CONTACT } else { TOUCHSCREEN_STATE_RELEASE };
             uhs.send_touchscreen(state, x, y, None).await?;
         }
-        Op::Edge { phase, x, y } => {
+        Op::Edge { phase, x, y, edge } => {
             indigo
-                .send_digitizer((x, y), None, phase, DigitizerEdge::Bottom, DigitizerTarget::MainScreen)
+                .send_digitizer((x, y), None, phase, edge, DigitizerTarget::MainScreen)
                 .await?;
         }
         Op::Button { page, usage, down } => {

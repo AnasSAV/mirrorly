@@ -14,3 +14,5 @@ uuid.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 input.workspace = true
+
+mdns-sd.workspace = true
