@@ -144,6 +144,23 @@ frames are lost, so no keyframe requests fire; the cost is delay, not
 corruption. Removing it needs Apple's QUIC tunnel transport, which idevice
 0.1.68 does not implement. Nothing on our side buffers.
 
+### Window shape (Mirrorly 0.1.0 Mac-style window)
+
+Borderless window; Present → scan-out from DXGI statistics, 2 × 5 s windows
+per row, USB, idle home screen.
+
+| Date | Shape | Present → scan-out p50 / p95 | Immediate flips | Verdict |
+|---|---|---|---|---|
+| 2026-10-18 | `SetWindowRgn` rounded clip (phone-size radius) | **9.72 / 14.73 ms** | **0 %** | rejected: a clip region forces DWM composition |
+| 2026-10-18 | no clip, square (`MIRROR_SQUARE=1`) | 0.00–0.38 / 2.60–2.77 ms | 44–59 % | |
+| 2026-10-18 | **Windows 11 rounded corners (DWMWCP_ROUND) + screen corners drawn in the shader** | **0.00–0.35 / 2.63–2.98 ms** | 45–57 % | **shipped**: no measurable cost |
+
+The screen's large rounded corners are a signed-distance mask in the video
+pixel shader (no extra pass). Separately observed: when the window is partly
+covered by another window, DWM composes it and direct flips drop to 0 %
+(+8–10 ms) — normal Windows behaviour for any windowed app; keep the mirror
+unobstructed (or use F11) for the lowest latency.
+
 ### Glass-to-glass (camera)
 
 Not measured: no camera available (2026-10-18). Best estimate from the

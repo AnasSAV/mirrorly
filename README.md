@@ -1,140 +1,168 @@
-# iphone_screen_mirror
+<p align="center">
+  <img src="packaging/mirrorly-256.png" width="112" alt="Mirrorly icon">
+</p>
 
-Low-latency iPhone screen mirroring and control for Windows, in Rust
-("scrcpy for iPhone"). USB first, Wi-Fi later.
+<h1 align="center">Mirrorly</h1>
 
-**Status: USB and Wi-Fi working (Phases 1–3).** Phase 0 findings:
-[FEASIBILITY.md](FEASIBILITY.md). The code in `spike/` and `spike-decode/` is
-throwaway measurement tooling; the app lives in `crates/`.
+<p align="center">
+  <b>See and control your iPhone from Windows, with very little delay.</b><br>
+  USB or Wi-Fi · mouse and keyboard · no jailbreak, no Mac, no account.
+</p>
 
-## Run
+---
 
-```powershell
-target\release\iphone-mirror.exe            # add --vsync to present with vsync
-```
+Mirrorly shows your iPhone's screen in a phone-shaped window on your PC and
+lets you use it with your mouse and keyboard: tap, swipe, scroll, type, go
+Home, open the App Switcher. It is built for low latency: the PC adds about
+1 ms; most of the remaining delay is the iPhone itself
+([measurements](LATENCY.md)).
 
-| Input | On the phone |
+Everything stays on your computer and your network. Nothing is uploaded.
+
+## Download
+
+Get the latest version from [**Releases**](../../releases/latest):
+
+- **Mirrorly-Setup-x.y.z.exe** — installer (no administrator rights needed;
+  adds a Start-menu shortcut and an uninstaller), or
+- **Mirrorly-x.y.z-portable.zip** — unzip anywhere and run `Mirrorly.exe`.
+
+The app is not code-signed yet, so Windows SmartScreen may warn about it.
+Choose *More info → Run anyway*, or check the file against `SHA256SUMS.txt`
+in the release.
+
+## Before the first run
+
+1. **Install [Apple Devices](https://apps.microsoft.com/detail/9np83lwlpz9k)**
+   from the Microsoft Store (free). It provides the driver Windows needs to
+   talk to an iPhone. The installer offers to open the Store page if it is
+   missing.
+2. **iPhone**: iOS 17.4 or later, with a passcode.
+3. **Plug the iPhone in, unlock it, tap Trust.**
+4. **Turn on Developer Mode**: *Settings › Privacy & Security › Developer
+   Mode › On*. The iPhone restarts; unlock it and tap *Turn On*. If the
+   switch isn't there, start Mirrorly once with the iPhone plugged in — it
+   asks iOS to show it.
+
+The first time you open Mirrorly, a welcome screen walks you through these
+steps and ticks each one off as it is done.
+
+On the first connection Mirrorly sets up Apple's developer services on the
+iPhone (the same disk image Xcode uses, signed for your phone by Apple). This
+takes a moment and may repeat after the iPhone restarts.
+
+## Using it
+
+| Do this | To |
 |---|---|
-| Left click / drag | Tap / swipe (touch) |
-| Drag starting at the very bottom edge | Home; drag up and pause for the App Switcher |
-| Right click | Home |
-| Keyboard | Types into the focused field; Ctrl+C/V/X/A/Z act as ⌘ shortcuts |
-| F1 / F2 / F3 / F4 / F5 (or the menu bar) | Home / App Switcher / Lock / Volume − / Volume + |
-| F12 / Shift+F12 | Rotate the view clockwise / counter-clockwise (the phone always streams portrait; rotate for landscape apps) |
-| F10 | Latency overlay (per-stage timings, drops, tap results) |
-| F9 | Latency probe: 10 timed taps where the mouse points (aim at something that reacts, e.g. a Calculator key) |
-| F11 | Borderless fullscreen |
+| Click / drag on the screen | Tap / swipe |
+| Mouse wheel | Scroll |
+| Drag up from the very bottom edge | Go Home (pause before letting go for the App Switcher) |
+| Right-click | Go Home |
+| Type | Type into the focused field (Ctrl+C / V / X / A / Z work as ⌘ shortcuts) |
+| Point at the window | A bar appears above the screen (it never covers it, so you can still pull down Control Center): close, minimize, size · rotate, App Switcher, Home. Drag the bar to move the window |
+| **Ctrl+1** / **Ctrl+2** / **Ctrl+3** | Home / App Switcher / Spotlight |
+| F3 / F4 / F5 | Lock / Volume − / Volume + |
+| F12 (Shift+F12) | Rotate the view for landscape apps |
+| F11 | Fullscreen |
+| Ctrl+wheel or the green button | Make the window bigger or smaller |
 
-A white dot marks a click the instant it happens and disappears when the
-phone's response arrives. The console shows connection status and a stats
-line every 5 s. Options: `--vsync`, `--overlay`, `--timings-csv FILE`,
-`--rctl pmd3|idevice|off`, `--no-auto-ddi`, `--no-wifi`. Diagnostics via
-environment: `MIRROR_TOUCH=uhs|indigo` (force a touch path),
-`MIRROR_NAGLE=1`, `MIRROR_DXGI_TRACE=1`. How latency is measured, and
-every result: [LATENCY.md](LATENCY.md).
+A small dot marks your click instantly, before the iPhone's own response
+arrives. The iPhone always sends its screen upright, so rotate the view
+yourself when an app turns sideways.
 
 ## Wi-Fi
 
-1. Connect the iPhone by USB once and start the app. It creates a Wi-Fi
-   pairing record automatically and silently (the phone already trusts this PC
-   over USB); you'll see "Setting up Wi-Fi (one time)…" in the title.
-2. Unplug. The app looks for the phone on the network (Bonjour,
-   `_remotepairing._tcp`) and continues over Wi-Fi in about 2 s. Plug the cable
-   in again and it switches back to USB by itself: USB is always preferred.
-3. The title shows the transport; the light in the top-right corner of the
-   picture shows link quality (green < 10 ms jitter, amber < 25 ms, red above
-   that or after any loss / keyframe request in the last 2 s).
+After the first USB connection, **unplug the cable**: Mirrorly finds the
+iPhone on your network and continues over Wi-Fi in about two seconds. Plug the
+cable back in and it switches to USB by itself (USB is faster). An amber or
+red light at the top of the screen means the Wi-Fi link is struggling.
 
-`--no-wifi` disables all of this. Pairing records live in
-`%LOCALAPPDATA%\iphone-mirror\wifi\` (delete the files to forget the phone).
+For Wi-Fi to work:
 
-### Windows requirements for Wi-Fi
+- PC and iPhone on the **same Wi-Fi**, iPhone unlocked.
+- Windows network profile **Private**: *Settings › Network & internet ›
+  Wi-Fi › (your network) › Network profile type › Private*. If Windows asks
+  whether Mirrorly may use private networks, allow it.
+- Not a guest / hotel / apartment network that isolates devices from each
+  other, and no full-tunnel VPN.
+- For the smoothest picture, turn off Wi-Fi power saving: *Device Manager ›
+  Network adapters › (Wi-Fi adapter) › Power Management*, untick "Allow the
+  computer to turn off this device".
 
-- **Network profile Private**: Settings → Network & internet → Wi-Fi → (your
-  network) → Network profile type → Private. On Public, Windows Firewall drops
-  the phone's Bonjour (mDNS, UDP 5353) answers.
-- **Firewall**: if Windows asks whether `iphone-mirror.exe` may communicate on
-  private networks, allow it (inbound UDP 5353 for discovery; the rest are
-  outbound TCP connections to the phone).
-- **Same network, no client isolation**: PC and iPhone on the same Wi-Fi.
-  Guest networks and many apartment/hotel networks isolate clients from each
-  other; mirroring cannot work there.
-- **VPN**: a full-tunnel VPN can hide the local network; disconnect it if the
-  phone is not found.
-- **Wi-Fi power saving off** for the lowest jitter: Device Manager → Network
-  adapters → your Wi-Fi adapter → Power Management → untick "Allow the
-  computer to turn off this device to save power"; and in Control Panel →
-  Power Options → Change plan settings → Advanced → Wireless Adapter Settings
-  → Power Saving Mode → Maximum Performance.
-- **iPhone**: unlocked, on the same Wi-Fi.
+Wi-Fi adds a few milliseconds and the occasional hiccup; see
+[LATENCY.md](LATENCY.md).
 
-Over Wi-Fi, touches are sent as Indigo digitizer events: iOS ignores the
-touchscreen reports used over USB when they arrive over the network
-(measured; cause unknown). Latency vs USB is in [LATENCY.md](LATENCY.md):
-about +7 ms at the median, with occasional stalls because the tunnel is
-TLS over TCP.
+## Troubleshooting
 
-## Layout
+The window tells you what it is waiting for ("Unlock your iPhone", "Turn on
+Developer Mode", …). If something else goes wrong, the log is at
+`%LOCALAPPDATA%\Mirrorly\logs\Mirrorly.log`; run `Mirrorly.exe --console` to
+watch it live.
+
+| Problem | Try |
+|---|---|
+| "Apple Devices is required" | Install Apple Devices, then replug the iPhone |
+| Black screen / "iPhone is busy" | Close the Camera or any app using the camera or microphone |
+| Not found over Wi-Fi | Same network? Network profile Private? VPN off? Connect by USB once |
+| Choppy over Wi-Fi | Move closer to the router, use 5 GHz, turn Wi-Fi power saving off |
+
+To forget the Wi-Fi pairing, delete `%LOCALAPPDATA%\Mirrorly\wifi\`.
+
+---
+
+## For developers
+
+Rust, with a latency-first pipeline: [idevice](https://github.com/jkcoxson/idevice)
+for the device protocols, FFmpeg d3d11va decoding straight into the swapchain
+(zero copy), and a DXGI flip-model swapchain with a frame-latency waitable.
+How it was designed and measured: [FEASIBILITY.md](FEASIBILITY.md) and
+[LATENCY.md](LATENCY.md).
 
 | Crate | Role |
 |---|---|
 | `crates/device` | USB (usbmuxd with TCP_NODELAY, CoreDeviceProxy) and Wi-Fi (RemotePairing, Bonjour, TLS-PSK) transports into one tunnel type; Developer Disk Image, media session, RTCP feedback, HID execution, reconnect with USB preferred (network thread) |
 | `crates/video` | RTP/HEVC depacketizer (marker-bit), FFmpeg d3d11va decode into textures on the app's D3D11 device (decode thread) |
-| `crates/input` | Window → panel coordinate mapping, gesture state (touch vs bottom-edge system gesture), key mapping |
-| `crates/app` | Window, DXGI flip-model swapchain, zero-copy NV12 render, present thread, menu bar |
+| `crates/input` | Window → screen coordinate mapping, gestures (touch vs bottom-edge system gesture), key mapping |
+| `crates/app` | Window and chrome, DXGI flip-model swapchain, zero-copy NV12 render, present thread |
+| `spike/`, `spike-decode/` | Phase 0 measurement tools (`s0`–`s5`) |
 
-## Requirements
+### Build
 
-Phone:
-- iOS 17.4 or later (tested on iOS 27.0), passcode set
-- Developer Mode on: *Settings → Privacy & Security → Developer Mode*. If the
-  switch is missing, run `s0_probe --reveal-devmode` with the phone plugged in.
-- Plugged in by USB, unlocked, and **Trust This Computer** accepted
+Requirements (Windows 10/11 x64):
 
-PC (Windows 10/11 x64):
-- [Apple Devices](https://apps.microsoft.com/detail/9np83lwlpz9k) (provides
-  Apple Mobile Device Service / usbmuxd)
-- Rust (stable, MSVC target): `winget install Rustlang.Rustup`
+- Rust stable, MSVC target: `winget install Rustlang.Rustup`
 - Visual Studio 2022 Build Tools with the C++ workload:
   `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
-- LLVM, for `ffmpeg-sys-next`'s bindgen: `winget install LLVM.LLVM`
+- LLVM (libclang for bindgen): `winget install LLVM.LLVM`
 - FFmpeg 9.0 **LGPL shared** dev build unpacked to `third_party/ffmpeg`
   (`include/`, `lib/`, `bin/`), e.g. BtbN's
-  `ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip`. `.cargo/config.toml` points
-  `FFMPEG_DIR` and `LIBCLANG_PATH` at it. Do not use a GPL build.
-
-## Build
-
-The app and `spike-decode` use FFmpeg through bindgen, which needs the MSVC
-environment for the C headers:
+  `ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip`. Never a GPL build.
 
 ```powershell
 cmd /c "\"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat\" && cargo build --release"
-cargo build --release -p spike            # s0..s3, no FFmpeg needed
+target\release\Mirrorly.exe --console
 ```
 
-The build copies the FFmpeg DLLs next to `iphone-mirror.exe`.
-
-## First run on a new phone
+Release packages (installer, portable zip, checksums) also need
+`cargo install cargo-about --features cli` and Inno Setup 6
+(`winget install JRSoftware.InnoSetup`):
 
 ```powershell
-target\release\s0_probe.exe                 # sees the phone? paired? Developer Mode?
-target\release\s1_tunnel.exe --install-ddi  # opens the tunnel, installs the Developer Disk Image
+powershell -ExecutionPolicy Bypass -File packaging\build-release.ps1   # -> dist\
 ```
 
-The Developer Disk Image is downloaded from the community DeveloperDiskImage
-repository and personalized for the phone by Apple's signing server (as Xcode
-does). Expect to install it again after the phone reboots (`s1_tunnel`
-reports whether it is present).
+Options: `--vsync`, `--overlay` (F10), `--timings-csv FILE`, `--no-wifi`,
+`--no-auto-ddi`, `--rctl pmd3|idevice|off`, `--console`. Diagnostics via
+environment: `MIRROR_TOUCH=uhs|indigo`, `MIRROR_NAGLE=1`,
+`MIRROR_DXGI_TRACE=1`, `MIRROR_SQUARE=1`. F9 runs a latency probe (10 timed
+taps where the mouse points).
 
-## Spike tools
+## License
 
-| Binary | Purpose |
-|---|---|
-| `s0_probe` | usbmuxd, pairing record, iOS version, Developer Mode |
-| `s1_tunnel` | CoreDeviceProxy tunnel timings, RSD services, DDI check/install |
-| `s2_video` | record the HEVC stream (`--out -` pipes to `ffplay -`) with per-frame timing CSV |
-| `s3_input` | tap / live drag / buttons / typing / key chords / live mouse window / latency |
-| `s4_decode` | FFmpeg d3d11va decode latency per GPU |
+Mirrorly is MIT-licensed ([LICENSE](LICENSE)). Releases include FFmpeg
+libraries under the LGPL v3 and many Rust crates under permissive licenses;
+see `THIRD-PARTY-NOTICES.txt` and `FFMPEG-NOTICE.txt` in each release.
 
-Outputs go to `out/` (gitignored).
+Mirrorly is not affiliated with or endorsed by Apple Inc. iPhone, iOS and
+Xcode are trademarks of Apple Inc.
