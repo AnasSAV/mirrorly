@@ -96,7 +96,7 @@ async function frame(au) {
   const key = isKey(au);
   if (key) behind = false;
   else if (behind) return;
-  else if (decoder.decodeQueueSize > 2) { behind = true; say('behind, skipping to a keyframe'); say('k'); return; }
+  else if (decoder.decodeQueueSize > 4) { behind = true; say('behind, skipping to a keyframe'); say('k'); return; }
   ts += 1;
   queued.set(ts, performance.now());
   try {
@@ -107,7 +107,7 @@ async function frame(au) {
 function show(text) { hud.hidden = false; hud.textContent = text; }
 
 function connect() {
-  ws = new WebSocket('ws://' + location.host + '/stream');
+  ws = new WebSocket('ws://' + location.host + location.pathname.replace(/\/$/, '') + '/stream');
   ws.binaryType = 'arraybuffer';
   ws.onmessage = (m) => frame(new Uint8Array(m.data));
   ws.onclose = (ev) => { resetDecoder(); show('Waiting for Mirrorly… (' + ev.code + ')'); setTimeout(connect, 1000); };

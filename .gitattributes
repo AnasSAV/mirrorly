@@ -1,0 +1,5 @@
+# The bundled driver is signed: its catalog covers the exact bytes of the
+# INF, so line endings must never be converted.
+packaging/vdd/MttVDD.inf -text
+packaging/vdd/MttVDD.dll binary
+packaging/vdd/mttvdd.cat binary

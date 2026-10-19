@@ -123,8 +123,55 @@ fn base64(data: &[u8]) -> String {
     s
 }
 
+/// Letters for the address's secret: no 0/o, 1/l look-alikes.
+const KEY_CHARS: &[u8; 32] = b"abcdefghijkmnpqrstuvwxyz23456789";
+
+/// The secret part of the display's address (8 characters, 40 bits),
+/// made once and kept, so a Home Screen shortcut keeps working. Without
+/// it the server shows nothing: anyone else on the network could
+/// otherwise watch the screen.
+pub fn key() -> String {
+    let base = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let file = base.join("Mirrorly").join("display-key.txt");
+    if let Ok(k) = std::fs::read_to_string(&file)
+        && valid_key(k.trim())
+    {
+        return k.trim().to_string();
+    }
+    let mut bytes = [0u8; 8];
+    ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut bytes).expect("system random numbers");
+    let k: String = bytes.iter().map(|b| KEY_CHARS[(b & 31) as usize] as char).collect();
+    if let Err(e) = std::fs::create_dir_all(file.parent().unwrap_or(&file)).and_then(|_| std::fs::write(&file, &k)) {
+        tracing::warn!("cannot save the display address: {e}");
+    }
+    k
+}
+
+fn valid_key(k: &str) -> bool {
+    k.len() == 8 && k.bytes().all(|c| KEY_CHARS.contains(&c))
+}
+
+/// What a request path asks for, given the secret.
+#[derive(Debug, PartialEq)]
+enum Route {
+    Page,
+    Stream,
+    Unknown,
+}
+
+fn route(path: &str, key: &str) -> Route {
+    let path = path.split('?').next().unwrap_or("");
+    let Some(rest) = path.strip_prefix('/').and_then(|p| p.strip_prefix(key)) else { return Route::Unknown };
+    match rest {
+        "" | "/" => Route::Page,
+        "/stream" => Route::Stream,
+        _ => Route::Unknown,
+    }
+}
+
 /// Listen on `port` (all interfaces: the iPad comes over Wi-Fi).
 pub fn start(port: u16, stop: Arc<AtomicBool>) -> Result<Hub> {
+    let key = Arc::new(key());
     let listener = TcpListener::bind(("0.0.0.0", port)).with_context(|| format!("listen on port {port}"))?;
     listener.set_nonblocking(true)?;
     let hub = Hub { viewers: Arc::default(), want_key: Arc::new(AtomicBool::new(false)) };
@@ -133,9 +180,9 @@ pub fn start(port: u16, stop: Arc<AtomicBool>) -> Result<Hub> {
         while !stop.load(Relaxed) {
             match listener.accept() {
                 Ok((conn, peer)) => {
-                    let h = h.clone();
+                    let (h, key) = (h.clone(), key.clone());
                     let _ = thread::Builder::new().name("display-conn".into()).spawn(move || {
-                        if let Err(e) = handle(conn, &h) {
+                        if let Err(e) = handle(conn, &h, &key) {
                             tracing::info!("viewer {peer}: {e:#}");
                         }
                     });
@@ -148,7 +195,7 @@ pub fn start(port: u16, stop: Arc<AtomicBool>) -> Result<Hub> {
     Ok(hub)
 }
 
-fn handle(mut conn: TcpStream, hub: &Hub) -> Result<()> {
+fn handle(mut conn: TcpStream, hub: &Hub, secret: &str) -> Result<()> {
     conn.set_nonblocking(false)?;
     conn.set_nodelay(true)?;
     let mut req = Vec::new();
@@ -166,27 +213,32 @@ fn handle(mut conn: TcpStream, hub: &Hub) -> Result<()> {
         .lines()
         .find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case("sec-websocket-key")).map(|(_, v)| v.trim().to_string()));
 
-    match (path, key) {
-        ("/stream", Some(key)) => {
+    let (status, body) = match (route(path, secret), key) {
+        (Route::Stream, Some(key)) => {
             let head = format!(
                 "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n",
                 accept_key(&key)
             );
             conn.write_all(head.as_bytes())?;
-            viewer(conn, hub)
+            return viewer(conn, hub);
         }
+        (Route::Page, _) => ("200 OK", PAGE),
         _ => {
-            let body = PAGE.as_bytes();
-            let head = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                body.len()
-            );
-            conn.write_all(head.as_bytes())?;
-            conn.write_all(body)?;
-            Ok(())
+            tracing::info!("display: refused a request without the address's key");
+            ("404 Not Found", NOT_FOUND)
         }
-    }
+    };
+    let head = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    conn.write_all(head.as_bytes())?;
+    conn.write_all(body.as_bytes())?;
+    Ok(())
 }
+
+const NOT_FOUND: &str = "<!doctype html><meta name=viewport content=\"width=device-width\"><title>Mirrorly</title>\
+<p style=\"font:17px -apple-system,sans-serif;padding:24px\">Open the full address that Mirrorly shows on the PC.</p>";
 
 fn viewer(conn: TcpStream, hub: &Hub) -> Result<()> {
     let (tx, rx): (SyncSender<Arc<Vec<u8>>>, Receiver<Arc<Vec<u8>>>) = sync_channel(QUEUE);
@@ -257,6 +309,20 @@ mod tests {
     #[test]
     fn websocket_accept_key_from_rfc_6455() {
         assert_eq!(accept_key("dGhlIHNhbXBsZSBub25jZQ=="), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+    }
+
+    #[test]
+    fn only_the_secret_address_is_served() {
+        let k = "abcd2345";
+        assert_eq!(route("/abcd2345", k), Route::Page);
+        assert_eq!(route("/abcd2345/", k), Route::Page);
+        assert_eq!(route("/abcd2345?x=1", k), Route::Page);
+        assert_eq!(route("/abcd2345/stream", k), Route::Stream);
+        assert_eq!(route("/", k), Route::Unknown);
+        assert_eq!(route("/stream", k), Route::Unknown);
+        assert_eq!(route("/abcd2346/stream", k), Route::Unknown);
+        assert_eq!(route("/abcd2345x", k), Route::Unknown);
+        assert!(valid_key(k) && !valid_key("abc") && !valid_key("abcd234O"));
     }
 
     #[test]

@@ -80,9 +80,11 @@ impl DisplaySession {
         self.hub.viewer_count()
     }
 
-    /// The addresses an iPad on the same network can open.
+    /// The addresses an iPad on the same network can open (with the
+    /// secret that keeps others on the network out).
     pub fn urls() -> Vec<String> {
-        local_ipv4().into_iter().map(|ip| format!("http://{ip}:{PORT}")).collect()
+        let key = server::key();
+        local_ipv4().into_iter().map(|ip| format!("http://{ip}:{PORT}/{key}")).collect()
     }
 }
 
