@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Mirrorly display</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none;
+               -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+               font-family: -apple-system, system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: contain; }
+  #hud { position: fixed; left: 10px; top: 10px; font: 12px ui-monospace, monospace; color: #8f8;
+         background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: 6px; white-space: pre; }
+  #cover { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 14px; align-items: center;
+           justify-content: center; color: #fff; background: #0d1226; text-align: center; padding: 24px; }
+  #cover h1 { margin: 0; font-size: 26px; }
+  #cover p { margin: 0; color: #a3add6; font-size: 16px; max-width: 30em; }
+  #cover button { font: 600 18px -apple-system, sans-serif; color: #fff; background: #4c61fa; border: 0;
+                  border-radius: 14px; padding: 14px 30px; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<div id="hud" hidden></div>
+<div id="cover">
+  <h1>Mirrorly display</h1>
+  <p>This iPad becomes a second screen for your PC. Move your mouse onto it and use it like any other monitor.</p>
+  <button id="go">Start</button>
+  <p id="note">Tip: Share › Add to Home Screen opens it full screen, without Safari's bars.</p>
+</div>
+<script>
+'use strict';
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
+const hud = document.getElementById('hud');
+const cover = document.getElementById('cover');
+let ws = null, decoder = null, codec = null, ts = 0, behind = false, started = false;
+const stats = { frames: 0, bytes: 0, decode: [], since: performance.now() };
+const queued = new Map();
+
+function nalTypes(au) {
+  const types = [];
+  for (let i = 0; i + 3 < au.length; i++) {
+    if (au[i] === 0 && au[i + 1] === 0 && au[i + 2] === 1) { types.push([au[i + 3] & 0x1f, i + 3]); i += 3; }
+  }
+  return types;
+}
+function codecOf(au) {
+  for (const [t, i] of nalTypes(au)) {
+    if (t === 7) {
+      const h = (b) => b.toString(16).padStart(2, '0');
+      return 'avc1.' + h(au[i + 1]) + h(au[i + 2]) + h(au[i + 3]);
+    }
+  }
+  return null;
+}
+const isKey = (au) => nalTypes(au).some(([t]) => t === 5);
+
+function say(text) { if (ws && ws.readyState === 1) ws.send(text); }
+
+function resetDecoder(why) {
+  if (why) say('decoder reset: ' + why);
+  if (decoder) { try { decoder.close(); } catch (e) {} }
+  decoder = null; codec = null; queued.clear();
+  say('k');
+}
+
+async function frame(au) {
+  stats.bytes += au.length;
+  if (!decoder) {
+    if (!isKey(au)) return;
+    codec = codecOf(au);
+    if (!codec) return;
+    const cfg = { codec, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' };
+    const ok = await VideoDecoder.isConfigSupported(cfg).catch(() => ({ supported: false }));
+    if (!ok.supported) { show('This iPad can’t decode ' + codec); return; }
+    decoder = new VideoDecoder({
+      output: (f) => {
+        if (canvas.width !== f.displayWidth || canvas.height !== f.displayHeight) {
+          canvas.width = f.displayWidth; canvas.height = f.displayHeight;
+        }
+        ctx.drawImage(f, 0, 0);
+        const t0 = queued.get(f.timestamp);
+        if (t0 !== undefined) { stats.decode.push(performance.now() - t0); queued.delete(f.timestamp); }
+        f.close();
+        stats.frames++;
+      },
+      error: (e) => resetDecoder(e && e.message),
+    });
+    decoder.configure(cfg);
+  }
+  // Decoding fell behind: drop pictures up to the next keyframe rather than
+  // let a backlog (delay, memory) build up.
+  const key = isKey(au);
+  if (key) behind = false;
+  else if (behind) return;
+  else if (decoder.decodeQueueSize > 2) { behind = true; say('behind, skipping to a keyframe'); say('k'); return; }
+  ts += 1;
+  queued.set(ts, performance.now());
+  try {
+    decoder.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: ts, data: au }));
+  } catch (e) { resetDecoder(e.message); }
+}
+
+function show(text) { hud.hidden = false; hud.textContent = text; }
+
+function connect() {
+  ws = new WebSocket('ws://' + location.host + '/stream');
+  ws.binaryType = 'arraybuffer';
+  ws.onmessage = (m) => frame(new Uint8Array(m.data));
+  ws.onclose = (ev) => { resetDecoder(); show('Waiting for Mirrorly… (' + ev.code + ')'); setTimeout(connect, 1000); };
+  ws.onopen = () => {
+    if (hud.textContent.startsWith('Waiting')) hud.textContent = '';
+    say(started ? 'reconnected' : 'page started');
+    started = true;
+  };
+}
+
+// Nobody touches a monitor, so keep the iPad from locking itself. Safari
+// drops the lock whenever the page is hidden; take it again on return.
+async function stayAwake() {
+  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+  try { await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+document.addEventListener('visibilitychange', stayAwake);
+
+// A tap anywhere shows or hides the stats.
+canvas.addEventListener('click', () => {
+  hud.dataset.off = hud.dataset.off ? '' : '1';
+  hud.hidden = !!hud.dataset.off;
+});
+
+setInterval(() => {
+  const now = performance.now(), s = (now - stats.since) / 1000;
+  stats.decode.sort((a, b) => a - b);
+  const p50 = stats.decode.length ? stats.decode[stats.decode.length >> 1].toFixed(1) : '-';
+  if (ws && ws.readyState === 1 && !hud.dataset.off) {
+    show(`${canvas.width}x${canvas.height}  ${(stats.frames / s).toFixed(0)} fps  ${(stats.bytes * 8 / s / 1e6).toFixed(1)} Mbit/s  decode ${p50} ms`);
+  } else if (hud.dataset.off) { hud.hidden = true; }
+  stats.frames = 0; stats.bytes = 0; stats.decode = []; stats.since = now;
+}, 1000);
+
+document.getElementById('go').addEventListener('click', async () => {
+  if (!('VideoDecoder' in window)) { document.getElementById('note').textContent = 'This Safari can’t decode video here (needs iPadOS 16.4 or later).'; return; }
+  cover.remove();
+  const el = document.documentElement;
+  try { await (el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen && el.webkitRequestFullscreen()); } catch (e) {}
+  stayAwake();
+  connect();
+});
+</script>
+</body>
+</html>

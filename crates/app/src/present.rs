@@ -176,12 +176,12 @@ pub fn spawn(
             };
             // Window chrome: status or welcome page (no video), drop target,
             // messages, stats. (The hover bar is its own window: bar.rs.)
-            let (status, welcome, drop_hover, toast, disconnected, hover, phones) = {
+            let (status, welcome, drop_hover, toast, disconnected, hover, phones, display) = {
                 let c = shared.chrome.lock().unwrap();
                 let status = frame.is_none().then(|| c.status.clone());
                 let welcome = if frame.is_none() { c.welcome.clone() } else { None };
                 let phones = if c.disconnected { c.phones.clone() } else { Vec::new() };
-                (status, welcome, c.drop_hover, c.toast.clone(), c.disconnected, c.hover, phones)
+                (status, welcome, c.drop_hover, c.toast.clone(), c.disconnected, c.hover, phones, c.display.clone())
             };
             let ui_frame = UiFrame {
                 view: scene_view,
@@ -192,6 +192,7 @@ pub fn spawn(
                 disconnected,
                 hover,
                 phones: &phones,
+                display: display.as_deref(),
                 stats: overlay_text.as_deref(),
             };
             let presented = {

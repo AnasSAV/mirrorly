@@ -121,6 +121,8 @@ pub struct Chrome {
     pub disconnected: bool,
     /// iPhones to choose from on the disconnected page.
     pub phones: Vec<device::phones::Phone>,
+    /// The iPad is a display: the address to open in its Safari.
+    pub display: Option<String>,
 }
 
 #[derive(Default)]

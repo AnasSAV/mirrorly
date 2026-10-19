@@ -17,6 +17,10 @@
 //! copied; files copied in Explorer go when Ctrl+V is pressed in Mirrorly.
 //! The other way, text, photos and files copied on the iPhone land on the
 //! Windows clipboard.
+//!
+//! An iPad can also be a second monitor (the display crate): mirroring it
+//! then stops, and once its Safari shows the display this window steps
+//! aside to a notification-area icon.
 
 // Release builds are a GUI app: no console window (logs go to a file).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -32,6 +36,7 @@ mod render;
 mod sink;
 mod state;
 mod status;
+mod tray;
 mod ui;
 mod winclip;
 
@@ -148,6 +153,8 @@ enum UserEvent {
     WinClipboard,
     /// iPhone files are on the Windows clipboard now (its sequence number).
     ClipWritten(Option<u32>),
+    /// A choice from the notification-area icon's menu.
+    Tray(tray::TrayAction),
 }
 
 /// Probe taps: count, pause before each (screen must be still), hold.
@@ -163,6 +170,8 @@ const DEFAULT_SIZE: usize = 2;
 const BEZEL: f64 = 6.0;
 /// The bar stays this long after the pointer leaves the window.
 const BAR_LINGER: Duration = Duration::from_millis(600);
+/// While the display page shows, how often to check for the iPad.
+const DISPLAY_POLL: Duration = Duration::from_millis(300);
 /// One wheel notch moves the finger this far (fraction of the screen height).
 const SCROLL_PER_NOTCH: f64 = 0.12;
 /// A wheel scroll gesture lasts about this long; notches arriving meanwhile
@@ -209,6 +218,12 @@ struct App {
     /// Mirrorly is writing iPhone files to the Windows clipboard (on a
     /// helper thread): that change is not a Windows copy.
     clip_writing: bool,
+    /// The iPad as a second monitor, while it is one.
+    display: Option<display::DisplaySession>,
+    /// Its notification-area icon (the window is hidden meanwhile).
+    tray: Option<tray::Tray>,
+    /// The window stepped aside for the display.
+    display_hidden: bool,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
@@ -412,6 +427,8 @@ impl App {
             Control::AppSwitcher => self.send(self.app_switcher()),
             Control::Home => self.send(HidEvent::Button { button: Button::Home }),
             Control::Shelf => self.drag_shelf(),
+            Control::Display => self.start_display(),
+            Control::StopDisplay => self.stop_display(),
             Control::Power => {
                 let on = self.shared.chrome.lock().unwrap().disconnected;
                 self.set_connected(on);
@@ -454,7 +471,7 @@ impl App {
     /// The picker row or Forget button under (x, y), while it is shown.
     fn picker_at(&self, x: f64, y: f64) -> Option<Control> {
         let c = self.shared.chrome.lock().unwrap();
-        if !c.disconnected || c.phones.is_empty() {
+        if !c.disconnected || c.phones.is_empty() || c.display.is_some() {
             return None;
         }
         let (m, _) = self.mapper();
@@ -490,12 +507,90 @@ impl App {
     fn connect_button_at(&self, x: f64, y: f64) -> bool {
         {
             let c = self.shared.chrome.lock().unwrap();
-            if !c.disconnected || !c.phones.is_empty() {
+            if !c.disconnected || !c.phones.is_empty() || c.display.is_some() {
                 return false;
             }
         }
         let (m, _) = self.mapper();
         layout::inside(layout::connect_button(m.view, self.scale()), x, y)
+    }
+
+    /// The Stop button on the display page.
+    fn stop_button_at(&self, x: f64, y: f64) -> bool {
+        if self.display.is_none() {
+            return false;
+        }
+        let (m, _) = self.mapper();
+        layout::inside(layout::connect_button(m.view, self.scale()), x, y)
+    }
+
+    /// "Use as display" is offered while an iPad is connected.
+    fn display_offered(&self) -> bool {
+        self.display.is_none() && self.link.is_some() && self.shared.view.lock().unwrap().is_tablet()
+    }
+
+    /// The iPad becomes a second monitor. Mirroring it stops (pointless
+    /// now); this window says where to point its Safari until the iPad
+    /// shows the display, then steps aside to a notification-area icon.
+    fn start_display(&mut self) {
+        if !display::driver_present() {
+            self.toast("The virtual display driver isn't installed", 4.0);
+            return;
+        }
+        let session = match display::DisplaySession::start() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("iPad display: {e:#}");
+                self.toast("Couldn't start the display", 4.0);
+                return;
+            }
+        };
+        let url = display::DisplaySession::urls().into_iter().next().unwrap_or_else(|| format!("this PC's address, port {}", display::PORT));
+        tracing::info!("iPad display started: {url}");
+        let proxy = self.proxy.clone();
+        match tray::Tray::new(self.hwnd, "Mirrorly: iPad display", move |a| {
+            let _ = proxy.send_event(UserEvent::Tray(a));
+        }) {
+            Ok(t) => self.tray = Some(t),
+            Err(e) => tracing::warn!("{e:#}"),
+        }
+        self.display = Some(session);
+        self.display_hidden = false;
+        self.set_connected(false);
+        self.shared.chrome.lock().unwrap().display = Some(url);
+        self.set_bar(false);
+        self.slot.request_redraw();
+    }
+
+    /// Back to mirroring: the display stops, the window returns.
+    fn stop_display(&mut self) {
+        if self.display.take().is_none() {
+            return;
+        }
+        tracing::info!("iPad display stopped");
+        self.tray = None;
+        self.shared.chrome.lock().unwrap().display = None;
+        if let Some(w) = &self.window {
+            w.set_visible(true);
+            w.focus_window();
+        }
+        self.display_hidden = false;
+        self.set_connected(true);
+    }
+
+    /// The iPad shows the display: hide the window (the icon stays).
+    fn check_display(&mut self) {
+        if self.display_hidden || self.display.as_ref().is_none_or(|d| d.viewers() == 0) {
+            return;
+        }
+        self.display_hidden = true;
+        self.set_bar(false);
+        if let Some(w) = &self.window {
+            w.set_visible(false);
+        }
+        if let Some(t) = &self.tray {
+            t.notify("Your iPad is a display", "Mirrorly's icon here stops it.");
+        }
     }
 
     /// Drag what was copied on the iPhone out of the window (runs the
@@ -678,6 +773,8 @@ impl App {
     }
 
     fn quit(&mut self, el: &ActiveEventLoop) {
+        self.display = None;
+        self.tray = None;
         self.release_all();
         self.slot.quit();
         el.exit();
@@ -773,7 +870,8 @@ impl App {
     /// The hover bar's controls, in its own client pixels.
     fn toolbar(&self) -> Option<layout::Toolbar> {
         let shelf = self.shared.chrome.lock().unwrap().shelf.is_some();
-        self.bar.as_ref().filter(|b| b.is_shown()).map(|b| b.toolbar(shelf))
+        let display = self.display_offered();
+        self.bar.as_ref().filter(|b| b.is_shown()).map(|b| b.toolbar(shelf, display))
     }
 
     /// Show or hide the bar (animated). Like macOS, it sits above the phone
@@ -781,8 +879,9 @@ impl App {
     /// Center; the mirror window itself never changes size for it.
     fn set_bar(&mut self, show: bool) {
         let full = self.window.as_ref().is_some_and(|w| w.fullscreen().is_some());
+        let display = self.display.is_some();
         if let Some(b) = self.bar.as_mut() {
-            b.show(show && !full);
+            b.show(show && !full && !display);
         }
         self.sync_bar();
     }
@@ -800,10 +899,11 @@ impl App {
 
     /// Redraw the bar if what it shows changed.
     fn sync_bar(&mut self) {
+        let display = self.display_offered();
         let st = {
             let c = self.shared.chrome.lock().unwrap();
-            let hover = c.hover.filter(|h| !matches!(h, Control::Connect | Control::Phone(_) | Control::Forget(_)));
-            bar::state_of(&c, hover)
+            let hover = c.hover.filter(|h| !matches!(h, Control::Connect | Control::Phone(_) | Control::Forget(_) | Control::StopDisplay));
+            bar::state_of(&c, hover, display)
         };
         if let Some(b) = self.bar.as_mut() {
             b.sync(&st);
@@ -842,6 +942,9 @@ impl App {
             .and_then(|(x, y)| self.toolbar().and_then(|t| t.hit(x, y)))
             .or_else(|| {
                 (self.cursor_inside && self.connect_button_at(self.cursor.0, self.cursor.1)).then_some(Control::Connect)
+            })
+            .or_else(|| {
+                (self.cursor_inside && self.stop_button_at(self.cursor.0, self.cursor.1)).then_some(Control::StopDisplay)
             })
             .or_else(|| self.cursor_inside.then(|| self.picker_at(self.cursor.0, self.cursor.1)).flatten());
         let changed = {
@@ -907,7 +1010,10 @@ impl ApplicationHandler<UserEvent> for App {
         // Bar animation: about 120 steps a second while it runs.
         let animating = self.bar.as_mut().is_some_and(|b| b.tick());
         let frame = animating.then(|| now + Duration::from_millis(8));
-        el.set_control_flow(match [self.hide_bar_at, self.toast_until, frame].into_iter().flatten().min() {
+        // The display page waits for the iPad to show up.
+        self.check_display();
+        let display_poll = (self.display.is_some() && !self.display_hidden).then(|| now + DISPLAY_POLL);
+        el.set_control_flow(match [self.hide_bar_at, self.toast_until, frame, display_poll].into_iter().flatten().min() {
             Some(t) => ControlFlow::WaitUntil(t),
             None => ControlFlow::Wait,
         });
@@ -943,6 +1049,13 @@ impl ApplicationHandler<UserEvent> for App {
                 if let Some(seq) = seq {
                     self.clip_sent = seq;
                     self.clip_sent_hash = None;
+                }
+                return;
+            }
+            UserEvent::Tray(action) => {
+                match action {
+                    tray::TrayAction::StopDisplay => self.stop_display(),
+                    tray::TrayAction::Quit => self.quit(el),
                 }
                 return;
             }
@@ -1096,6 +1209,10 @@ impl ApplicationHandler<UserEvent> for App {
                 let (m, bottom) = self.mapper();
                 match (button, state) {
                     (MouseButton::Left, ElementState::Pressed) => {
+                        if self.stop_button_at(self.cursor.0, self.cursor.1) {
+                            self.stop_display();
+                            return;
+                        }
                         if self.connect_button_at(self.cursor.0, self.cursor.1) {
                             self.set_connected(true);
                             return;
@@ -1402,6 +1519,9 @@ fn main() -> Result<()> {
         win_copy_at: None,
         phone_copy_at: None,
         clip_writing: false,
+        display: None,
+        tray: None,
+        display_hidden: false,
         threads: Vec::new(),
     };
     event_loop.run_app(&mut app)?;

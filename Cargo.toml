@@ -75,6 +75,7 @@ windows = { version = "=0.62.2", features = [
 input = { path = "crates/input" }
 device = { path = "crates/device" }
 video = { path = "crates/video" }
+display = { path = "crates/display" }
 
 [profile.release]
 debug = 1

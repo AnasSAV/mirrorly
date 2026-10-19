@@ -5,7 +5,7 @@ authors = ["AnasSAV"]
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Mirrorly: mirror and control an iPhone from Windows"
+description = "Mirrorly: mirror and control an iPhone from Windows, and use an iPad as a second display"
 
 [[bin]]
 name = "Mirrorly"
@@ -15,6 +15,7 @@ path = "src/main.rs"
 device.workspace = true
 video.workspace = true
 input.workspace = true
+display.workspace = true
 winit.workspace = true
 windows.workspace = true
 # Direct2D's point types; must match the version `windows` uses.

@@ -49,12 +49,14 @@ pub struct UiFrame<'a> {
     pub hover: Option<Control>,
     /// iPhones to choose from while disconnected.
     pub phones: &'a [device::phones::Phone],
+    /// The iPad is a display: the address for its Safari (replaces the page).
+    pub display: Option<&'a str>,
     pub stats: Option<&'a str>,
 }
 
 impl UiFrame<'_> {
     pub fn is_empty(&self) -> bool {
-        self.status.is_none() && self.stats.is_none() && !self.drop_hover && self.toast.is_none()
+        self.status.is_none() && self.stats.is_none() && !self.drop_hover && self.toast.is_none() && self.display.is_none()
     }
 }
 
@@ -81,6 +83,7 @@ pub struct Ui {
 const GLYPH_PHONE: &str = "\u{E8EA}";
 const GLYPH_CHECK: &str = "\u{E73E}";
 const GLYPH_PASTE: &str = "\u{E77F}";
+const GLYPH_DISPLAY: &str = "\u{E7F4}";
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> D2D1_COLOR_F {
     D2D1_COLOR_F { r, g, b, a }
@@ -173,6 +176,7 @@ impl Ui {
             }
             self.ctx.BeginDraw();
             match (f.welcome, f.status) {
+                _ if f.display.is_some() => self.display_page(f.view, f.display.unwrap_or_default(), f.hover == Some(Control::StopDisplay)),
                 (Some(w), Some((title, detail))) if !f.disconnected => self.welcome_page(f.view, w, title, detail),
                 (_, Some(_)) if f.disconnected && !f.phones.is_empty() => self.picker_page(f.view, f.phones, f.hover),
                 (_, Some((title, detail))) => {
@@ -265,13 +269,41 @@ impl Ui {
 
     /// Connect again, on the disconnected page.
     fn connect_button(&self, view: Rect, hover: bool) {
-        let r = crate::layout::connect_button(view, self.scale as f64);
+        self.page_button(view, "Connect", (0.30, 0.42, 1.0), hover);
+    }
+
+    /// The pill button under a page's text.
+    fn page_button(&self, view: Rect, label: &str, (r, g, b): (f32, f32, f32), hover: bool) {
+        let rc = crate::layout::connect_button(view, self.scale as f64);
         unsafe {
-            let rr = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: (r.h / 2.0) as f32, radiusY: (r.h / 2.0) as f32 };
+            let rr = D2D1_ROUNDED_RECT { rect: rect(rc), radiusX: (rc.h / 2.0) as f32, radiusY: (rc.h / 2.0) as f32 };
             let a = if hover { 1.0 } else { 0.88 };
-            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.30, 0.42, 1.0, a)));
+            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(r, g, b, a)));
         }
-        self.text("Connect", &self.title, Rect { y: r.y - 1.0, ..r }, rgba(1.0, 1.0, 1.0, 1.0));
+        self.text(label, &self.title, Rect { y: rc.y - 1.0, ..rc }, rgba(1.0, 1.0, 1.0, 1.0));
+    }
+
+    /// The iPad is a display: where to point its Safari, and Stop. (Once
+    /// the iPad shows the screen this window is hidden.)
+    fn display_page(&self, view: Rect, url: &str, hover: bool) {
+        let s = self.scale as f64;
+        unsafe { self.ctx.FillRectangle(&rect(view), self.color(rgba(0.0, 0.0, 0.0, 1.0))) };
+        let cx = view.x + view.w / 2.0;
+        let cy = view.y + view.h * 0.42;
+        let w = view.w * 0.84;
+        let line = |y: f64, h: f64| Rect { x: cx - w / 2.0, y: cy + y * s, w, h: h * s };
+        let grey = rgba(0.62, 0.62, 0.66, 1.0);
+        self.text(GLYPH_DISPLAY, &self.big_icon, Rect { x: cx - 40.0 * s, y: cy - 176.0 * s, w: 80.0 * s, h: 70.0 * s }, rgba(0.55, 0.65, 1.0, 1.0));
+        self.text("Your iPad is a display", &self.title, line(-96.0, 30.0), rgba(1.0, 1.0, 1.0, 1.0));
+        self.text("On the iPad, open Safari and go to", &self.body, line(-58.0, 22.0), grey);
+        self.text(url, &self.title, line(-34.0, 30.0), rgba(0.50, 0.62, 1.0, 1.0));
+        self.text(
+            "then tap Start. Share › Add to Home Screen makes it one tap next time. This window steps aside once the iPad shows your screen.",
+            &self.body,
+            line(4.0, 100.0),
+            grey,
+        );
+        self.page_button(view, "Stop", (0.86, 0.27, 0.25), hover);
     }
 
     /// Files from the PC are over the window: say what dropping does.

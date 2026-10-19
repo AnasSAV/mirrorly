@@ -1,0 +1,15 @@
+[package]
+name = "display"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "iPad as a second monitor: virtual display capture, H.264 encode, web viewer"
+
+[dependencies]
+anyhow.workspace = true
+tracing.workspace = true
+windows.workspace = true
+ffmpeg-sys-next.workspace = true
+# SHA-1 for the WebSocket handshake (already in the tree through idevice).
+ring = "0.17"

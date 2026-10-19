@@ -159,11 +159,12 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
  "device",
+ "display",
  "input",
  "png",
  "tracing",
@@ -757,6 +758,17 @@ name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
+
+[[package]]
+name = "display"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ffmpeg-sys-next",
+ "ring",
+ "tracing",
+ "windows",
+]
 
 [[package]]
 name = "dlib"
@@ -2636,11 +2648,14 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "clap",
+ "display",
  "idevice",
  "plist",
  "tokio",
+ "tracing",
  "tracing-subscriber",
  "uuid",
+ "windows",
  "winit",
 ]
 

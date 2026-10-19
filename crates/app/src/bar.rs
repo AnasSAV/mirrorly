@@ -96,6 +96,8 @@ pub struct BarState {
     pub shelf: Option<String>,
     pub shelf_media: bool,
     pub disconnected: bool,
+    /// An iPad is connected: offer "Use as display".
+    pub display: bool,
 }
 
 struct Proc {
@@ -163,6 +165,7 @@ const GLYPH_POWER: &str = "\u{E7E8}";
 const GLYPH_CONNECT: &str = "\u{E703}";
 const GLYPH_PHOTO: &str = "\u{EB9F}";
 const GLYPH_DOCUMENT: &str = "\u{E8A5}";
+const GLYPH_DISPLAY: &str = "\u{E7F4}";
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> D2D1_COLOR_F {
     D2D1_COLOR_F { r, g, b, a }
@@ -290,9 +293,9 @@ impl Bar {
     }
 
     /// The bar's controls, in its client pixels.
-    pub fn toolbar(&self, shelf: bool) -> Toolbar {
+    pub fn toolbar(&self, shelf: bool, display: bool) -> Toolbar {
         let w = self.size.0.max(1) as f64;
-        layout::toolbar(Rect { x: 0.0, y: 0.0, w, h: self.height() }, self.scale, shelf)
+        layout::toolbar(Rect { x: 0.0, y: 0.0, w, h: self.height() }, self.scale, shelf, display)
     }
 
     /// Sit above the mirror window whose client area is `client` (screen
@@ -449,7 +452,7 @@ impl Bar {
     fn draw(&mut self, st: &BarState) -> Result<()> {
         let s = self.scale;
         let (w, h) = (self.size.0 as f64, self.size.1 as f64);
-        let t = self.toolbar(st.shelf.is_some());
+        let t = self.toolbar(st.shelf.is_some(), st.display);
         unsafe {
             let bounds = RECT { left: 0, top: 0, right: self.size.0, bottom: self.size.1 };
             self.rt.BindDC(self.dc, &bounds)?;
@@ -498,6 +501,7 @@ impl Bar {
                     Control::AppSwitcher => GLYPH_SWITCHER,
                     Control::Power if st.disconnected => GLYPH_CONNECT,
                     Control::Power => GLYPH_POWER,
+                    Control::Display => GLYPH_DISPLAY,
                     _ => GLYPH_ROTATE,
                 };
                 let f = self.fonts.icons.clone();
@@ -569,12 +573,13 @@ impl Fonts {
 }
 
 /// The bar state for the current chrome.
-pub fn state_of(c: &crate::state::Chrome, hover: Option<Control>) -> BarState {
+pub fn state_of(c: &crate::state::Chrome, hover: Option<Control>, display: bool) -> BarState {
     let shelf: Option<&Shelf> = c.shelf.as_ref();
     BarState {
         hover,
         shelf: shelf.map(|s| s.label.clone()),
         shelf_media: shelf.is_some_and(|s| s.media),
         disconnected: c.disconnected,
+        display,
     }
 }
