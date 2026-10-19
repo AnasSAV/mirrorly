@@ -86,6 +86,9 @@ Using it
     Windows. Drop PC files on the window to send them to the iPhone: photos
     are pasted into the open app, documents are saved by name in a Mirrorly
     folder in the Files app.
+  - One clipboard: copy text or pictures on the PC and paste on the iPhone
+    (Ctrl+V in Mirrorly), copy on the iPhone and paste on the PC. Files
+    copied in Explorer go over with Ctrl+V in Mirrorly.
   - The power button on the bar disconnects (the iPhone is left alone until
     you connect again). The disconnected screen lists your iPhones: click
     one to mirror it, or Forget it.

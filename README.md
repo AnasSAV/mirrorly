@@ -48,9 +48,9 @@ of delay on the PC.
       keyboard. Ctrl shortcuts work like ⌘ on the iPhone.
     </td>
     <td width="33%" valign="top">
-      <h3>📂 Drag &amp; drop</h3>
-      Copy photos or files on the iPhone and drag them out to Windows. Drop
-      files on the window to send them to the iPhone.
+      <h3>📂 Drag &amp; drop, one clipboard</h3>
+      Drag photos and files between the iPhone and Windows. Copy on one,
+      paste on the other: text, pictures and files.
     </td>
   </tr>
   <tr>
@@ -218,14 +218,34 @@ Drag files from Explorer and **drop them on the mirrored screen**.
 <summary><b>Limits and details</b></summary>
 
 - Up to 200 MB per drop. Folders aren't sent; drop the files inside them.
-- Copying text on the iPhone is left alone; only photos, videos and files are
-  fetched.
+- Copied text goes to the Windows clipboard; see [Shared clipboard](#shared-clipboard).
 - To paste a photo into a **Files** folder, click an empty spot in the folder
   first so the paste lands there.
 - Fetched files are kept in `%LOCALAPPDATA%\Mirrorly\clipboard` until you copy
   something else.
 
 </details>
+
+## Shared clipboard
+
+Copy on one, paste on the other, while Mirrorly is connected.
+
+| You copy | On | Then |
+|---|---|---|
+| Text or a picture | Windows | Paste on the iPhone: **Ctrl+V** in Mirrorly, or touch and hold › **Paste** |
+| Files (in Explorer) | Windows | Press **Ctrl+V** in Mirrorly: photos are pasted, documents saved by name |
+| Text | iPhone | **Ctrl+V** anywhere on the PC |
+| Photos or files | iPhone | **Ctrl+V** into Explorer, a chat or an email; a photo also pastes as a picture into Paint, Word and the like |
+
+Whichever was copied last wins: copy on the iPhone after the PC, and Ctrl+V
+in Mirrorly pastes the iPhone's copy.
+
+> [!NOTE]
+> Passwords stay put. Anything a password manager marks as private on the PC
+> is never sent to the iPhone, and text that comes from the iPhone is kept out
+> of Windows' clipboard history and cloud clipboard. On the iPhone, the paste
+> suggestion above the keyboard reads *"Paste from dtpasteboardd"*: that is the
+> iOS service Mirrorly hands the copy to.
 
 ## USB and Wi-Fi
 
@@ -285,8 +305,9 @@ results are in [**LATENCY.md**](LATENCY.md).
   for Xcode (screen, input, clipboard, files), and only after you tap *Trust*
   on the iPhone. Over Wi-Fi the connection is encrypted (TLS). Nothing on the
   iPhone is modified or jailbroken.
-- **Your clipboard.** Mirrorly only fetches photos, videos and files you copy,
-  and never reads copied text.
+- **Your clipboard.** Copies go only between your PC and your iPhone, while
+  connected. Content a password manager marks as private on the PC is never
+  sent, and iPhone text is kept out of Windows' clipboard history.
 - **Open source.** Every line is in this repository (MIT license).
 
 ## Troubleshooting
@@ -301,7 +322,8 @@ Developer Mode*, and so on.
 | Black screen / "iPhone is busy" | Close the Camera, or any app using the camera or microphone. |
 | Not found over Wi-Fi | Same network? Network profile **Private**? VPN off? Connect by USB once. |
 | Choppy over Wi-Fi | Move closer to the router, use 5 GHz, turn Wi-Fi power saving off. |
-| Nothing appears after copying on the iPhone | Copy it again with the iPhone unlocked; text copies are ignored by design. |
+| Nothing appears after copying on the iPhone | Copy it again with the iPhone unlocked and Mirrorly connected. |
+| Ctrl+V on the iPhone pastes the wrong thing | The newest copy wins: copy it again on the side you want. |
 | A dropped photo didn't paste | Open the place you want it first (a chat, a note), then drop again. |
 | The camera says it's in use | Click the power button to disconnect; Mirrorly then releases it. |
 | Mirrorly connects to the wrong iPhone | Disconnect, then click the right one in the list. |
