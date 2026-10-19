@@ -99,6 +99,11 @@ Using it
     one to mirror it, or Forget it.
   - After one USB connection, unplug: Mirrorly continues over Wi-Fi (same
     network, Windows network profile "Private"). Plug in to go back to USB.
+  - iPad as a second display: with an iPad connected, click the monitor
+    button on the bar. The first time, Windows asks for administrator
+    permission once (the virtual display driver in the vdd folder, and a
+    firewall rule). Open the address shown in Safari on the iPad and tap
+    Start. Stop it from Mirrorly's icon by the clock.
 
 Logs: %LOCALAPPDATA%\Mirrorly\logs\Mirrorly.log
 More: https://github.com/AnasSAV/mirrorly

@@ -16,6 +16,7 @@
   <a href="#get-started">Get started</a> ·
   <a href="#using-mirrorly">Using it</a> ·
   <a href="#drag-and-drop-files">Drag &amp; drop</a> ·
+  <a href="#ipad-as-a-second-display">iPad display</a> ·
   <a href="#usb-and-wi-fi">USB &amp; Wi-Fi</a> ·
   <a href="#performance">Performance</a> ·
   <a href="#faq">FAQ</a> ·
@@ -28,7 +29,7 @@
 it with your mouse and keyboard: tap, swipe, scroll, type, and move photos and
 files between the two by dragging them. It works over a USB cable or your
 Wi-Fi, needs no Mac, no jailbreak and no account, and adds only about **1 ms**
-of delay on the PC.
+of delay on the PC. An iPad can also be a **second monitor** for the PC.
 
 > Everything stays between your PC and your iPhone. Nothing is uploaded, and
 > Mirrorly has no servers, accounts or telemetry.
@@ -70,6 +71,14 @@ of delay on the PC.
       each step as it happens.
     </td>
   </tr>
+  <tr>
+    <td colspan="3" valign="top">
+      <h3>🖥️ iPad as a second display</h3>
+      One click turns an iPad into an extra monitor for Windows: drag windows
+      onto it and use it with your mouse and keyboard, at the iPad's full
+      resolution and 60 fps, in Safari. Nothing to install on the iPad.
+    </td>
+  </tr>
 </table>
 
 <p align="center">
@@ -99,6 +108,7 @@ Get the latest version from **[Releases](../../releases/latest)**.
 | **iPhone or iPad** | iOS / iPadOS 27, with a passcode set | the latest version |
 | **Driver** | [Apple Devices](https://apps.microsoft.com/detail/9np83lwlpz9k) from the Microsoft Store (free) | |
 | **Wi-Fi** *(optional)* | PC and iPhone on the same network | 5 GHz |
+| **iPad display** *(optional)* | iPad and PC on the same Wi-Fi; administrator rights once, to install the display driver | 5 GHz, a PC with Intel Quick Sync |
 
 ## Get started
 
@@ -249,6 +259,62 @@ in Mirrorly pastes the iPhone's copy.
 > suggestion above the keyboard reads *"Paste from dtpasteboardd"*: that is the
 > iOS service Mirrorly hands the copy to.
 
+## iPad as a second display
+
+<p align="center">
+  <img src="docs/assets/display.svg" alt="The PC's desktop extends onto the iPad over Wi-Fi at 60 fps. Pipeline: a virtual monitor, Desktop Duplication with the mouse pointer, H.264 in hardware, a WebSocket that never queues, and Safari's hardware decoder on the iPad. About 7 ms on the PC." width="100%">
+</p>
+
+An iPad can be an extra monitor for your PC, like a second screen on your
+desk: drag windows onto it, and use it with the PC's mouse and keyboard.
+
+1. Connect the iPad to Mirrorly as usual, point at the window and click the
+   **monitor button** on the bar (iPads only).
+2. **The first time**, Windows asks for administrator permission once:
+   Mirrorly installs a virtual display driver and lets the iPad through the
+   firewall.
+3. On the iPad, open **Safari** and go to the address Mirrorly shows, then tap
+   **Start**. Tip: *Share › Add to Home Screen* makes it one tap next time,
+   full screen.
+
+The iPad now shows a new monitor next to your others. Mirrorly stops
+mirroring the iPad and steps aside to its icon by the clock; click it and
+choose **Stop using iPad as a display** to switch back.
+
+| | |
+|---|---|
+| Resolution | the iPad's own (2360 × 1640 on an iPad 10th gen), 60 fps |
+| Delay on the PC | about 7 ms from a screen change to the frame leaving (median) |
+| Where it sits | where you put it in *Settings › System › Display*; Mirrorly remembers |
+| When it's off | the virtual monitor is gone: windows can't get lost on it |
+
+> [!NOTE]
+> It works with the mouse and keyboard, not touch: Windows ignores touch from
+> other apps whenever an administrator window (Task Manager, an installer) is
+> in front, so it couldn't be relied on.
+
+<details>
+<summary><b>How it works, and what it installs</b></summary>
+
+- **[Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver)**
+  (MIT, signed by SignPath) adds the monitor. Mirrorly ships it in a `vdd`
+  folder and installs it on first use; its settings are in
+  `C:\VirtualDisplayDriver`. The monitor is only part of the desktop while
+  the iPad is a display.
+- A **firewall rule**, *Mirrorly iPad display*, lets the iPad reach Mirrorly
+  (port 8765, private and domain networks, Mirrorly only).
+- The screen is captured with Desktop Duplication, the pointer drawn in,
+  converted on the GPU and encoded as H.264 in hardware, and sent to Safari,
+  which decodes it in hardware (WebCodecs). If Wi-Fi falls behind, frames are
+  skipped rather than queued, so the delay never builds up.
+- The address has a secret part (e.g. `…:8765/k7m2x9qa`), made once on your
+  PC: without it the PC shows nothing, so others on your network can't watch.
+  The picture itself is not encrypted on your network.
+- To remove the driver: *Device Manager › Display adapters › Virtual Display
+  Driver › Uninstall device*, ticking *Attempt to remove the driver*.
+
+</details>
+
 ## USB and Wi-Fi
 
 After the first USB connection, **unplug the cable**: Mirrorly finds the iPhone
@@ -310,6 +376,9 @@ results are in [**LATENCY.md**](LATENCY.md).
 - **Your clipboard.** Copies go only between your PC and your iPhone, while
   connected. Content a password manager marks as private on the PC is never
   sent, and iPhone text is kept out of Windows' clipboard history.
+- **iPad display.** Served on your own network only, at an address with a
+  secret part, and only while you use it; the firewall rule covers private
+  networks. The picture is not encrypted on the network.
 - **Open source.** Every line is in this repository (MIT license).
 
 ## Troubleshooting
@@ -330,6 +399,9 @@ Developer Mode*, and so on.
 | A dropped photo didn't paste | Open the place you want it first (a chat, a note), then drop again. |
 | The camera says it's in use | Click the power button to disconnect; Mirrorly then releases it. |
 | Mirrorly connects to the wrong iPhone | Disconnect, then click the right one in the list. |
+| iPad display: Safari can't open the address | Same Wi-Fi? Network profile **Private**? If you moved Mirrorly, click the monitor button again to renew the firewall rule. |
+| iPad display: "Open the full address" | Type the whole address Mirrorly shows, including the part after `8765/`. |
+| iPad display: the monitor button asks for permission again | Mirrorly was moved or reinstalled elsewhere: the firewall rule names its location. |
 
 Still stuck? The log is at `%LOCALAPPDATA%\Mirrorly\logs\Mirrorly.log`; run
 `Mirrorly.exe --console` to watch it live, and
@@ -387,6 +459,14 @@ from other models are welcome.
 </details>
 
 <details>
+<summary><b>Can I touch the iPad when it's a display?</b></summary>
+
+No, it is used with the PC's mouse and keyboard, like any other monitor.
+Windows silently ignores touch from other apps while an administrator window
+is in front, which made it unreliable.
+</details>
+
+<details>
 <summary><b>Does it work with an iPad?</b></summary>
 
 Yes, in portrait and landscape. Turn the view with <kbd>F12</kbd> to match the
@@ -411,8 +491,9 @@ threads so input never waits on video:
 | [`crates/device`](crates/device) | USB (usbmuxd, CoreDeviceProxy) and Wi-Fi (RemotePairing, Bonjour, TLS-PSK) transports into one tunnel; Developer Disk Image; media session and RTCP feedback; HID execution; clipboard file transfer; reconnect with USB preferred |
 | [`crates/video`](crates/video) | RTP/HEVC depacketizer; FFmpeg d3d11va decoding into textures on the app's D3D11 device |
 | [`crates/input`](crates/input) | Window → screen coordinate mapping, gestures (touch vs bottom-edge system gesture), key mapping |
+| [`crates/display`](crates/display) | iPad as a display: virtual monitor on/off, Desktop Duplication + pointer, GPU NV12 conversion, H.264 encoding (Quick Sync, NVENC, Media Foundation), HTTP/WebSocket server and the Safari page, one-time elevated setup |
 | [`crates/app`](crates/app) | Window and chrome (Direct2D), swapchain, zero-copy NV12 render, drag and drop |
-| [`spike/`](spike), [`spike-decode/`](spike-decode) | Measurement and protocol probes (`s0`–`s7`) |
+| [`spike/`](spike), [`spike-decode/`](spike-decode) | Measurement and protocol probes (`s0`–`s9`) |
 
 Design notes: [FEASIBILITY.md](FEASIBILITY.md) (what the iPhone offers, and
 how it was verified) and [LATENCY.md](LATENCY.md) (method and results).
@@ -473,7 +554,9 @@ Environment: `MIRROR_TOUCH=uhs|indigo`, `MIRROR_NAGLE=1`,
 - [**pymobiledevice3**](https://github.com/doronz88/pymobiledevice3): reference
   for the CoreDevice services; its Developer Disk Image repository provides
   the signed images.
-- [**FFmpeg**](https://ffmpeg.org) (LGPL) for hardware HEVC decoding, and
+- [**Virtual Display Driver**](https://github.com/VirtualDrivers/Virtual-Display-Driver)
+  (MIT) for the iPad display's virtual monitor.
+- [**FFmpeg**](https://ffmpeg.org) (LGPL) for hardware HEVC decoding and H.264 encoding, and
   [**winit**](https://github.com/rust-windowing/winit) and
   [**windows-rs**](https://github.com/microsoft/windows-rs) for the window and
   Windows APIs.
@@ -481,7 +564,8 @@ Environment: `MIRROR_TOUCH=uhs|indigo`, `MIRROR_NAGLE=1`,
 ## License
 
 Mirrorly is MIT-licensed ([LICENSE](LICENSE)). Releases include FFmpeg
-libraries under the LGPL v3 and Rust crates under permissive licenses; see
+libraries under the LGPL v3, the Virtual Display Driver under the MIT license
+(`vdd\LICENSE.txt`) and Rust crates under permissive licenses; see
 `THIRD-PARTY-NOTICES.txt` and `FFMPEG-NOTICE.txt` in each release.
 
 <sub>Mirrorly is not affiliated with or endorsed by Apple Inc. iPhone, iOS, Mac
