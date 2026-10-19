@@ -31,7 +31,7 @@ use std::{
 
 use anyhow::{Context, Result};
 
-pub use screen::{VirtualScreen, driver_present};
+pub use screen::{VirtualScreen, detach as monitor_off, driver_present, is_attached as monitor_on};
 
 /// Port the iPad's Safari connects to.
 pub const PORT: u16 = 8765;
@@ -49,16 +49,27 @@ pub struct DisplaySession {
 }
 
 impl DisplaySession {
-    /// Start capturing the virtual monitor and serving it on `PORT`.
-    pub fn start() -> Result<Self> {
-        let screen = screen::find()?;
+    /// Put the virtual monitor on the desktop (at `prefer`, the iPad's
+    /// resolution, when the driver offers it), capture it and serve it on
+    /// `PORT`. Dropping the session takes the monitor off again.
+    pub fn start(prefer: Option<(u32, u32)>) -> Result<Self> {
+        let screen = screen::attach(prefer)?;
         let stop = Arc::new(AtomicBool::new(false));
-        let hub = server::start(PORT, stop.clone())?;
-        let (s2, scr, h2) = (stop.clone(), screen.clone(), hub.clone());
-        let worker = thread::Builder::new()
-            .name("display-capture".into())
-            .spawn(move || capture_loop(scr, h2, s2))
-            .context("capture thread")?;
+        let started = server::start(PORT, stop.clone()).and_then(|hub| {
+            let (s2, scr, h2) = (stop.clone(), screen.clone(), hub.clone());
+            let worker = thread::Builder::new()
+                .name("display-capture".into())
+                .spawn(move || capture_loop(scr, h2, s2))
+                .context("capture thread")?;
+            Ok((hub, worker))
+        });
+        let (hub, worker) = match started {
+            Ok(x) => x,
+            Err(e) => {
+                let _ = screen::detach();
+                return Err(e);
+            }
+        };
         tracing::info!("iPad display on {} ({}x{}), serving port {PORT}", screen.device, screen.width, screen.height);
         Ok(Self { stop, hub, screen, worker: Some(worker) })
     }
@@ -80,6 +91,9 @@ impl Drop for DisplaySession {
         self.hub.close_all();
         if let Some(w) = self.worker.take() {
             let _ = w.join();
+        }
+        if let Err(e) = screen::detach() {
+            tracing::warn!("{e:#}");
         }
     }
 }

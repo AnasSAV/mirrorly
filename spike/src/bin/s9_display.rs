@@ -31,6 +31,10 @@ struct Args {
 enum Cmd {
     /// Every adapter and its outputs.
     List,
+    /// Put the virtual monitor on the desktop.
+    On,
+    /// Take it off.
+    Off,
     /// Run Mirrorly's display session (capture, encode, serve, touch).
     Serve {
         #[arg(long, default_value_t = 1800)]
@@ -87,10 +91,16 @@ fn outputs() -> Result<Vec<(IDXGIAdapter1, IDXGIOutput, String, String, i32, i32
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    spike::init_logging();
+    // Physical pixels, as in Mirrorly.
+    unsafe {
+        let _ = windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext(windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
     match args.cmd {
+        Cmd::On => println!("{:?}", display::screen::attach(None)?),
+        Cmd::Off => display::monitor_off()?,
         Cmd::Serve { seconds } => {
-            spike::init_logging();
-            let session = display::DisplaySession::start()?;
+            let session = display::DisplaySession::start(None)?;
             println!("virtual screen: {:?}", session.screen);
             for url in display::DisplaySession::urls() {
                 println!("open on the iPad: {url}");

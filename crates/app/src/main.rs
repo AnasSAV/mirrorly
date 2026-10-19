@@ -250,6 +250,13 @@ impl App {
     }
 
     fn start(&mut self, el: &ActiveEventLoop) -> Result<()> {
+        // The iPad's virtual monitor is only on the desktop while it is a
+        // display; one left on (crash, power cut) is taken off.
+        if display::monitor_on()
+            && let Err(e) = display::monitor_off()
+        {
+            tracing::warn!("{e:#}");
+        }
         let attrs = Window::default_attributes()
             .with_title("Mirrorly")
             .with_decorations(false)
@@ -537,7 +544,9 @@ impl App {
             self.toast("The virtual display driver isn't installed", 4.0);
             return;
         }
-        let session = match display::DisplaySession::start() {
+        // The iPad's own resolution, landscape (the panel is reported portrait).
+        let (w, h) = self.shared.view.lock().unwrap().screen;
+        let session = match display::DisplaySession::start(Some((w.max(h), w.min(h)))) {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!("iPad display: {e:#}");
