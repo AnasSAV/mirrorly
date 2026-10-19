@@ -94,6 +94,10 @@ struct Args {
     /// Open a console window and log there instead of the log file.
     #[arg(long)]
     console: bool,
+    /// Internal: the one-time iPad display setup, run elevated by Mirrorly
+    /// itself (the iPad's resolution, e.g. 2360x1640).
+    #[arg(long = "setup-display", hide = true, value_name = "WxH")]
+    setup_display: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -155,6 +159,8 @@ enum UserEvent {
     ClipWritten(Option<u32>),
     /// A choice from the notification-area icon's menu.
     Tray(tray::TrayAction),
+    /// The iPad display setup finished: Ok(false) if permission was refused.
+    DisplaySetup(Result<bool, String>),
 }
 
 /// Probe taps: count, pause before each (screen must be still), hold.
@@ -224,6 +230,8 @@ struct App {
     tray: Option<tray::Tray>,
     /// The window stepped aside for the display.
     display_hidden: bool,
+    /// The one-time display setup is running (administrator prompt).
+    display_setup: bool,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
@@ -540,12 +548,23 @@ impl App {
     /// now); this window says where to point its Safari until the iPad
     /// shows the display, then steps aside to a notification-area icon.
     fn start_display(&mut self) {
-        if !display::driver_present() {
-            self.toast("The virtual display driver isn't installed", 4.0);
+        if self.display_setup {
             return;
         }
         // The iPad's own resolution, landscape (the panel is reported portrait).
         let (w, h) = self.shared.view.lock().unwrap().screen;
+        // First time: the driver and the firewall rule, as administrator.
+        if display::setup::needed() {
+            tracing::info!("iPad display: running the one-time setup");
+            self.display_setup = true;
+            self.toast("Setting up the iPad display…", 120.0);
+            let proxy = self.proxy.clone();
+            let _ = std::thread::Builder::new().name("display-setup".into()).spawn(move || {
+                let r = display::setup::run_elevated((w.max(h), w.min(h))).map_err(|e| format!("{e:#}"));
+                let _ = proxy.send_event(UserEvent::DisplaySetup(r));
+            });
+            return;
+        }
         let session = match display::DisplaySession::start(Some((w.max(h), w.min(h)))) {
             Ok(s) => s,
             Err(e) => {
@@ -1061,6 +1080,22 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 return;
             }
+            UserEvent::DisplaySetup(r) => {
+                self.display_setup = false;
+                match r {
+                    Ok(true) => {
+                        tracing::info!("iPad display setup done");
+                        self.toast_until = Some(Instant::now());
+                        self.start_display();
+                    }
+                    Ok(false) => self.toast("Using the iPad as a display needs administrator permission once", 5.0),
+                    Err(e) => {
+                        tracing::warn!("iPad display setup: {e}");
+                        self.toast("Couldn't set up the iPad display", 5.0);
+                    }
+                }
+                return;
+            }
             UserEvent::Tray(action) => {
                 match action {
                     tray::TrayAction::StopDisplay => self.stop_display(),
@@ -1465,9 +1500,9 @@ fn spawn_csv_logger(path: &std::path::Path) -> Result<mpsc::Sender<metrics::Fram
     Ok(tx)
 }
 
-/// Log to `%LOCALAPPDATA%\Mirrorly\logs\Mirrorly.log`, or to a console when
+/// Log to `%LOCALAPPDATA%\Mirrorly\logs\<name>`, or to a console when
 /// asked (or in debug builds, which have one).
-fn init_logging(console: bool) {
+fn init_logging(console: bool, name: &str) {
     let filter = || tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
     if console && !cfg!(debug_assertions) {
         unsafe {
@@ -1479,7 +1514,7 @@ fn init_logging(console: bool) {
         return;
     }
     let dir = device::paths::data_dir().join("logs");
-    let file = std::fs::create_dir_all(&dir).and_then(|_| std::fs::File::create(dir.join("Mirrorly.log")));
+    let file = std::fs::create_dir_all(&dir).and_then(|_| std::fs::File::create(dir.join(name)));
     match file {
         Ok(f) => tracing_subscriber::fmt().with_env_filter(filter()).with_ansi(false).with_writer(std::sync::Mutex::new(f)).init(),
         Err(_) => tracing_subscriber::fmt().with_env_filter(filter()).init(),
@@ -1491,11 +1526,24 @@ fn main() -> Result<()> {
     let _ = epoch();
     unsafe { timeBeginPeriod(1) };
     let args = Args::parse();
+    // The elevated copy that sets up the iPad display: only that, then exit.
+    if let Some(size) = &args.setup_display {
+        init_logging(args.console, "display-setup.log");
+        tracing::info!("Mirrorly {}: iPad display setup ({size})", env!("CARGO_PKG_VERSION"));
+        let code = match display::setup::perform(size) {
+            Ok(()) => 0,
+            Err(e) => {
+                tracing::error!("iPad display setup failed: {e:#}");
+                1
+            }
+        };
+        std::process::exit(code);
+    }
     // Before logging: a second copy must not truncate the running one's log.
     if already_running() {
         return Ok(());
     }
-    init_logging(args.console);
+    init_logging(args.console, "Mirrorly.log");
     tracing::info!("Mirrorly {} starting", env!("CARGO_PKG_VERSION"));
 
     let event_loop = EventLoop::<UserEvent>::with_user_event().build().context("event loop")?;
@@ -1531,6 +1579,7 @@ fn main() -> Result<()> {
         display: None,
         tray: None,
         display_hidden: false,
+        display_setup: false,
         threads: Vec::new(),
     };
     event_loop.run_app(&mut app)?;

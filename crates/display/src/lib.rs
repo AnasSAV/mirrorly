@@ -19,6 +19,7 @@ mod cursor;
 mod encode;
 pub mod screen;
 mod server;
+pub mod setup;
 
 use std::{
     sync::{

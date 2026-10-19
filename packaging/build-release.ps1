@@ -35,6 +35,10 @@ foreach ($lib in 'avcodec', 'avutil', 'swresample') {
 Copy-Item LICENSE "$stage\LICENSE.txt"
 New-Item -ItemType Directory -Force "$stage\licenses" | Out-Null
 Copy-Item packaging\licenses\*.txt "$stage\licenses\"
+# The Virtual Display Driver (MIT, signed), installed on first "Use as
+# display" for an iPad: see packaging\vdd\README.md.
+New-Item -ItemType Directory -Force "$stage\vdd" | Out-Null
+foreach ($f in 'MttVDD.dll', 'MttVDD.inf', 'mttvdd.cat', 'LICENSE.txt') { Copy-Item "packaging\vdd\$f" "$stage\vdd\" }
 
 $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
 cargo about generate -c packaging\about.toml -m crates\app\Cargo.toml packaging\about.hbs -o "$stage\THIRD-PARTY-NOTICES.txt"
