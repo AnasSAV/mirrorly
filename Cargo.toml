@@ -64,6 +64,11 @@ windows = { version = "=0.62.2", features = [
   "Win32_UI_WindowsAndMessaging",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_System_LibraryLoader",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_Graphics_Imaging",
+  "Win32_System_Variant",
+  "Win32_System_Com_StructuredStorage",
 ] }
 
 input = { path = "crates/input" }

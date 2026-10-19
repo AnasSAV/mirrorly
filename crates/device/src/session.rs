@@ -139,6 +139,12 @@ impl DeviceHandle {
         let _ = self.clip_tx.send(ClipCmd::Paste(files));
     }
 
+    /// Put Windows clipboard content on the iPhone's clipboard, and paste it
+    /// (V, with the user's Ctrl held as Command) if `paste`.
+    pub fn push_clipboard(&self, content: clipboard::PushContent, paste: bool) {
+        let _ = self.clip_tx.send(ClipCmd::Push(content, paste));
+    }
+
     /// A cloneable sender for other threads (e.g. a latency probe).
     pub fn sender(&self) -> InputSender {
         InputSender(self.hid_tx.clone())

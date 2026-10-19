@@ -4,7 +4,14 @@
 //!
 //! iPhone -> PC: when the phone's clipboard gets photos or files (Copy in
 //! Photos or Files), they are fetched into `%LOCALAPPDATA%\Mirrorly\clipboard`
-//! and offered to the window, which lets them be dragged out.
+//! and offered to the window, which lets them be dragged out (and puts them
+//! on the Windows clipboard). Copied text is read from the copy's primary
+//! type only (the `promiseSecondary` policy), which the daemon answers at
+//! once; see the stall note below.
+//! PC -> iPhone, clipboard: text and images copied on Windows are put on the
+//! phone's clipboard as they are copied ([`ClipCmd::Push`]), so a paste on
+//! the iPhone (Ctrl+V in Mirrorly, or touch and hold › Paste) gets them.
+//!
 //! PC -> iPhone: files dropped on the window go onto the phone's clipboard.
 //! Photos and videos are then pasted (Command-V) into whatever is open there;
 //! documents are also saved by name where Files shows them (see `docs`),
@@ -81,12 +88,43 @@ pub enum ClipEvent {
     /// `saved` documents were stored by name at `place` (and are on the
     /// clipboard too).
     Sent { pasted: usize, saved: usize, place: Option<String> },
+    /// Something new is on the iPhone's clipboard (anything, text too): it
+    /// is now newer than the PC's.
+    PhoneCopied,
+    /// Text copied on the iPhone, for the Windows clipboard.
+    PhoneText(String),
+    /// Windows clipboard content is on the iPhone's clipboard; `pasted`
+    /// when Command-V followed.
+    Pushed { pasted: bool },
     Failed(String),
+}
+
+/// Windows clipboard content for the iPhone's clipboard.
+#[derive(Debug, Clone)]
+pub enum PushContent {
+    Text(String),
+    /// PNG-encoded image.
+    Png(Vec<u8>),
 }
 
 pub enum ClipCmd {
     /// Put these files on the phone's clipboard and press Command-V.
     Paste(Vec<PathBuf>),
+    /// Put this on the phone's clipboard; then press V if `paste` (the
+    /// user is holding Ctrl, which the phone already has as Command).
+    Push(PushContent, bool),
+}
+
+/// The pasteboard types a pushed item is offered under (as iOS's own
+/// copies of text do).
+fn push_types(c: PushContent) -> Vec<(&'static str, Vec<u8>)> {
+    match c {
+        PushContent::Text(t) => {
+            let b = t.into_bytes();
+            vec![("public.utf8-plain-text", b.clone()), ("public.plain-text", b.clone()), ("public.text", b)]
+        }
+        PushContent::Png(b) => vec![("public.png", b)],
+    }
 }
 
 /// The pasteboard service on a bare XPC client (idevice's client sets one
@@ -134,6 +172,19 @@ impl Pasteboard {
     async fn request(&mut self, msg: XPCObject) -> Result<plist::Value> {
         self.0.send_object(msg, true).await?;
         Ok(self.0.recv().await?)
+    }
+
+    /// Text of the copy, from each item's primary type only (inline with the
+    /// `promiseSecondary` policy, answered at once even for a Notes copy).
+    async fn primary_text(&mut self) -> Result<Option<String>> {
+        let reply = self
+            .request(dict(vec![
+                ("command", XPCObject::String("PULL".into())),
+                ("pasteboardName", XPCObject::String(GENERAL.into())),
+                ("dataPolicy", dict(vec![("promiseSecondary", dict(vec![]))])),
+            ]))
+            .await?;
+        Ok(inline_text(&reply))
     }
 
     /// Item types only; no data is loaded on the phone.
@@ -186,18 +237,18 @@ impl Pasteboard {
             .ok_or_else(|| anyhow!("the iPhone no longer has {uti} (copied something else?)"))
     }
 
-    /// Replace the clipboard with one item per (type, bytes); returns the
-    /// new change count.
-    async fn set(&mut self, items: Vec<(&'static str, Vec<u8>)>) -> Result<Option<i64>> {
+    /// Replace the clipboard with these items, each offered under one or
+    /// more (type, bytes); returns the new change count.
+    async fn set(&mut self, items: Vec<Vec<(&'static str, Vec<u8>)>>) -> Result<Option<i64>> {
         let items = items
             .into_iter()
-            .map(|(uti, bytes)| {
+            .map(|reps| {
                 let mut data = Dictionary::new();
-                data.insert(uti.into(), dict(vec![("data", XPCObject::Data(bytes))]));
-                dict(vec![
-                    ("types", XPCObject::Array(vec![XPCObject::String(uti.into())])),
-                    ("data", XPCObject::Dictionary(data)),
-                ])
+                let types = reps.iter().map(|(uti, _)| XPCObject::String((*uti).into())).collect();
+                for (uti, bytes) in reps {
+                    data.insert(uti.into(), dict(vec![("data", XPCObject::Data(bytes))]));
+                }
+                dict(vec![("types", XPCObject::Array(types)), ("data", XPCObject::Dictionary(data))])
             })
             .collect();
         let reply = self
@@ -211,6 +262,21 @@ impl Pasteboard {
         Ok(change_count(&reply))
     }
 }
+
+/// The first text type carried inline by a PULL reply.
+fn inline_text(reply: &plist::Value) -> Option<String> {
+    let items = reply.as_dictionary()?.get("pasteboard")?.as_dictionary()?.get("items")?.as_array()?;
+    items.iter().find_map(|item| {
+        let data = item.as_dictionary()?.get("data")?.as_dictionary()?;
+        ["public.utf8-plain-text", "public.plain-text", "public.text"].iter().find_map(|uti| {
+            let bytes = data.get(*uti)?.as_dictionary()?.get("data")?.as_data()?;
+            String::from_utf8(bytes.to_vec()).ok().filter(|t| !t.is_empty())
+        })
+    })
+}
+
+/// Largest text handed to the Windows clipboard.
+const MAX_TEXT: usize = 8 << 20;
 
 /// What a clipboard item would become as a file on the PC.
 #[derive(Debug, PartialEq)]
@@ -422,6 +488,12 @@ impl Bridge {
                             (self.on_event)(ClipEvent::Failed(format!("{e:#}")));
                         }
                     }
+                    ClipCmd::Push(content, paste) => {
+                        if let Err(e) = self.push(content, paste).await {
+                            tracing::warn!("clipboard to iPhone failed: {e:#}");
+                            (self.on_event)(ClipEvent::Failed(format!("{e:#}")));
+                        }
+                    }
                 },
                 _ = tick.tick() => {
                     if let Err(e) = self.check().await {
@@ -444,9 +516,18 @@ impl Bridge {
             return Ok(());
         }
         self.seen = Some(snap.change);
+        (self.on_event)(ClipEvent::PhoneCopied);
         let plans: Vec<(i64, Plan)> = snap.items.iter().filter_map(|i| plan(i).map(|p| (i.index, p))).collect();
         if plans.is_empty() {
-            return Ok(()); // text or something else: not ours to fetch
+            // Text (or something else): only what the primary type carries.
+            if snap.items.iter().any(|i| i.types.iter().any(|t| t.contains("text"))) {
+                let text = self.with(Duration::from_secs(5), async |c| c.primary_text().await).await?;
+                if let Some(t) = text.filter(|t| t.len() <= MAX_TEXT) {
+                    tracing::info!("iPhone copied text ({} chars)", t.chars().count());
+                    (self.on_event)(ClipEvent::PhoneText(t));
+                }
+            }
+            return Ok(());
         }
         tracing::info!("iPhone clipboard change {:?}: {} file(s)", snap.change, plans.len());
         (self.on_event)(ClipEvent::Fetching(plans.len()));
@@ -520,7 +601,7 @@ impl Bridge {
         }
         let saved = if place.is_some() { docs.len() } else { 0 };
         let media = loaded.len() - docs.len();
-        let items: Vec<_> = loaded.into_iter().map(|(f, b)| (uti_for(f), b)).collect();
+        let items: Vec<_> = loaded.into_iter().map(|(f, b)| vec![(uti_for(f), b)]).collect();
         let change = self.with(Duration::from_secs(120), async |c| c.set(items).await).await?;
         // Our own copy is not news.
         self.seen = Some(change);
@@ -538,6 +619,27 @@ impl Bridge {
             0
         };
         (self.on_event)(ClipEvent::Sent { pasted, saved, place });
+        Ok(())
+    }
+
+    /// Windows clipboard -> the phone's clipboard, then V if asked (Command
+    /// is the user's Ctrl, already held on the phone).
+    async fn push(&mut self, content: PushContent, paste: bool) -> Result<()> {
+        let kind = match &content {
+            PushContent::Text(t) => format!("text ({} chars)", t.chars().count()),
+            PushContent::Png(b) => format!("image ({} B)", b.len()),
+        };
+        let items = vec![push_types(content)];
+        let change = self.with(Duration::from_secs(30), async |c| c.set(items).await).await?;
+        self.seen = Some(change);
+        tracing::info!("Windows clipboard {kind} on the iPhone, change {change:?}");
+        if paste {
+            let t = (self.now_us)();
+            for (usage, down) in [(0xE3, true), (0x19, true), (0x19, false)] {
+                let _ = self.hid.send((t, HidEvent::Key { usage, down }));
+            }
+        }
+        (self.on_event)(ClipEvent::Pushed { pasted: paste });
         Ok(())
     }
 }
@@ -616,6 +718,40 @@ mod tests {
         let mut buf = Vec::new();
         plist::Value::Dictionary(d).to_writer_binary(&mut buf).unwrap();
         assert_eq!(record_filename(&buf).as_deref(), Some("fibonacci heap.txt"));
+    }
+
+    #[test]
+    fn text_comes_from_inline_primary_types_only() {
+        let reply = |types: &[(&str, Option<&[u8]>)]| {
+            let mut data = plist::Dictionary::new();
+            for (uti, bytes) in types {
+                let mut d = plist::Dictionary::new();
+                match bytes {
+                    Some(b) => d.insert("data".into(), plist::Value::Data(b.to_vec())),
+                    None => d.insert("size".into(), plist::Value::Integer(10.into())),
+                };
+                data.insert(uti.to_string(), plist::Value::Dictionary(d));
+            }
+            let mut item = plist::Dictionary::new();
+            item.insert("data".into(), plist::Value::Dictionary(data));
+            let mut pb = plist::Dictionary::new();
+            pb.insert("items".into(), plist::Value::Array(vec![plist::Value::Dictionary(item)]));
+            let mut root = plist::Dictionary::new();
+            root.insert("pasteboard".into(), plist::Value::Dictionary(pb));
+            plist::Value::Dictionary(root)
+        };
+        assert_eq!(inline_text(&reply(&[("public.utf8-plain-text", Some(b"hi"))])).as_deref(), Some("hi"));
+        // Promised (not inline): nothing, rather than a stalling RESOLVE.
+        assert_eq!(inline_text(&reply(&[("public.utf8-plain-text", None)])), None);
+        assert_eq!(inline_text(&reply(&[("public.rtf", Some(b"{\\rtf1}"))])), None);
+    }
+
+    #[test]
+    fn pushed_text_is_offered_like_ios_text() {
+        let t = push_types(PushContent::Text("héllo".into()));
+        assert_eq!(t.iter().map(|(u, _)| *u).collect::<Vec<_>>(), ["public.utf8-plain-text", "public.plain-text", "public.text"]);
+        assert!(t.iter().all(|(_, b)| b == "héllo".as_bytes()));
+        assert_eq!(push_types(PushContent::Png(vec![1, 2])), vec![("public.png", vec![1, 2])]);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["AnasSAV"]
 edition.workspace = true
 license.workspace = true
@@ -19,6 +19,8 @@ winit.workspace = true
 windows.workspace = true
 # Direct2D's point types; must match the version `windows` uses.
 windows-numerics = "=0.3.1"
+# Windows clipboard bitmaps (CF_DIB) -> PNG for the iPhone.
+png = "0.17"
 
 anyhow.workspace = true
 clap.workspace = true

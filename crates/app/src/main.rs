@@ -12,7 +12,11 @@
 //!
 //! Files move through the iPhone's clipboard: copy photos or files on the
 //! iPhone and a chip on the bar can be dragged out to Windows; drop PC files
-//! on the window and they are pasted into the app open on the iPhone.
+//! on the window and they are pasted into the app open on the iPhone. Text
+//! and images copied on Windows go onto the iPhone's clipboard as they are
+//! copied; files copied in Explorer go when Ctrl+V is pressed in Mirrorly.
+//! The other way, text, photos and files copied on the iPhone land on the
+//! Windows clipboard.
 
 // Release builds are a GUI app: no console window (logs go to a file).
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -29,6 +33,7 @@ mod sink;
 mod state;
 mod status;
 mod ui;
+mod winclip;
 
 use std::{
     collections::HashSet,
@@ -38,7 +43,10 @@ use std::{
 
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
-use device::{DeviceEvent, DeviceHandle, RctlMode, clipboard::ClipEvent};
+use device::{
+    DeviceEvent, DeviceHandle, RctlMode,
+    clipboard::{ClipEvent, PushContent},
+};
 use input::{Button, HidEvent, gesture::Gesture, keys::hid_usage};
 use video::{D3dLock, FrameSlot};
 use winit::{
@@ -136,6 +144,10 @@ enum UserEvent {
     Phones(Vec<device::phones::Phone>),
     /// Mouse input on the hover bar.
     Bar(bar::BarInput),
+    /// The Windows clipboard changed.
+    WinClipboard,
+    /// iPhone files are on the Windows clipboard now (its sequence number).
+    ClipWritten(Option<u32>),
 }
 
 /// Probe taps: count, pause before each (screen must be still), hold.
@@ -186,6 +198,17 @@ struct App {
     /// Files dropped on the window, sent together once the drop is over.
     dropped: Vec<std::path::PathBuf>,
     toast_until: Option<Instant>,
+    /// Windows clipboard sequence number last put on the iPhone, and a hash
+    /// of that content (apps often announce one copy twice).
+    clip_sent: u32,
+    clip_sent_hash: Option<u64>,
+    /// When the Windows / iPhone clipboard last changed: the newer one is
+    /// what a paste on the iPhone should get.
+    win_copy_at: Option<Instant>,
+    phone_copy_at: Option<Instant>,
+    /// Mirrorly is writing iPhone files to the Windows clipboard (on a
+    /// helper thread): that change is not a Windows copy.
+    clip_writing: bool,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
@@ -289,6 +312,13 @@ impl App {
             },
             now_us,
         )?);
+
+        let clip_proxy = self.proxy.clone();
+        if let Err(e) = winclip::listen(self.hwnd, move || {
+            let _ = clip_proxy.send_event(UserEvent::WinClipboard);
+        }) {
+            tracing::warn!("cannot watch the Windows clipboard: {e}");
+        }
 
         let phones_proxy = self.proxy.clone();
         device::phones::spawn_watch(move |list| {
@@ -496,13 +526,108 @@ impl App {
         self.slot.request_redraw();
     }
 
+    /// Put the Windows clipboard on the iPhone's. Text and images go when
+    /// they are copied (`paste` false); files only when Ctrl+V asks
+    /// (`paste` true; they can be large). Returns true if Mirrorly is doing
+    /// the paste, so the V must not also go to the phone.
+    fn send_windows_clipboard(&mut self, paste: bool) -> bool {
+        let seq = winclip::sequence();
+        if seq == self.clip_sent || self.link.is_none() {
+            return false;
+        }
+        if self.device.as_ref().is_none_or(|d| !d.wants_connection()) {
+            return false;
+        }
+        let content = winclip::read(self.hwnd);
+        // The same text or image again, with no iPhone copy in between: it
+        // is already there.
+        let hash = match &content {
+            Some(winclip::WinClip::Text(t)) => Some(hash_of(t.as_bytes())),
+            Some(winclip::WinClip::Image(b)) => Some(hash_of(b)),
+            _ => None,
+        };
+        if hash.is_some() && hash == self.clip_sent_hash {
+            self.clip_sent = seq;
+            return false;
+        }
+        let Some(d) = self.device.as_ref() else { return false };
+        match content {
+            Some(winclip::WinClip::Text(t)) => {
+                d.push_clipboard(PushContent::Text(t), paste);
+                (self.clip_sent, self.clip_sent_hash) = (seq, hash);
+                paste
+            }
+            Some(winclip::WinClip::Image(png)) => {
+                d.push_clipboard(PushContent::Png(png), paste);
+                (self.clip_sent, self.clip_sent_hash) = (seq, hash);
+                paste
+            }
+            Some(winclip::WinClip::Files(files)) if paste => {
+                self.clip_sent_hash = None;
+                let what = if files.len() == 1 { "1 file".to_string() } else { format!("{} files", files.len()) };
+                tracing::info!("sending {what} copied in Explorer to the iPhone");
+                d.paste_files(files);
+                self.clip_sent = seq;
+                self.toast(format!("Sending {what} to iPhone…"), 120.0);
+                true
+            }
+            Some(winclip::WinClip::Files(_)) => false,
+            // Empty, private (password managers), or nothing the iPhone takes.
+            None => {
+                self.clip_sent = seq;
+                false
+            }
+        }
+    }
+
+    /// Ctrl+V in Mirrorly: if the Windows clipboard is newer than the
+    /// iPhone's and not there yet (a file copy, or a copy made a moment
+    /// ago), send it and paste. True if the V was handled.
+    fn paste_from_windows(&mut self) -> bool {
+        let windows_newer = match (self.win_copy_at, self.phone_copy_at) {
+            (Some(w), Some(p)) => w > p,
+            (Some(_), None) => true,
+            // Copied before Mirrorly started: unknown which is newer.
+            (None, _) => false,
+        };
+        windows_newer && self.send_windows_clipboard(true)
+    }
+
     fn clipboard(&mut self, ev: ClipEvent) {
         match ev {
+            ClipEvent::PhoneCopied => {
+                self.phone_copy_at = Some(Instant::now());
+                // The iPhone's clipboard moved on: the next Windows copy
+                // goes over even if it repeats the last one.
+                self.clip_sent_hash = None;
+            }
+            ClipEvent::PhoneText(text) => {
+                // Onto the Windows clipboard; that change is ours, not a copy.
+                if let Some(seq) = winclip::write_text(self.hwnd, &text) {
+                    self.clip_sent = seq;
+                    self.clip_sent_hash = Some(hash_of(text.as_bytes()));
+                }
+            }
+            ClipEvent::Pushed { pasted } => {
+                // Mirrorly pressed Command for the paste; let go of it if the
+                // user's Ctrl is already up.
+                if pasted && !self.keys_down.contains(&0xE3) {
+                    self.send(HidEvent::Key { usage: 0xE3, down: false });
+                }
+            }
             ClipEvent::Fetching(n) => {
                 let what = if n == 1 { "1 item".to_string() } else { format!("{n} items") };
                 self.toast(format!("Copying {what} from iPhone…"), 120.0);
             }
             ClipEvent::Copied(files) => {
+                // Also onto the Windows clipboard, as Explorer would copy them
+                // (and a photo as a picture); decoding runs off this thread.
+                self.clip_writing = true;
+                let (proxy, list) = (self.proxy.clone(), files.clone());
+                let _ = std::thread::Builder::new().name("clipboard".into()).spawn(move || {
+                    let seq = winclip::write_files(&list);
+                    let _ = proxy.send_event(UserEvent::ClipWritten(seq));
+                });
                 let shelf = shelf_for(&files);
                 self.toast(format!("{} copied · drag it from the bar", shelf.label), 4.0);
                 self.shared.chrome.lock().unwrap().shelf = Some(shelf);
@@ -510,6 +635,13 @@ impl App {
                 self.slot.request_redraw();
             }
             ClipEvent::Sent { pasted, saved, place } => {
+                // The paste released Command; press it again if the user is
+                // still holding Ctrl.
+                for usage in [0xE3, 0xE7] {
+                    if self.keys_down.contains(&usage) {
+                        self.send(HidEvent::Key { usage, down: true });
+                    }
+                }
                 let count = |n: usize| if n == 1 { "1 file".to_string() } else { format!("{n} files") };
                 let text = match (pasted, saved, place) {
                     (0, s, Some(place)) if s > 0 => format!("Saved {} to {place}", count(s)),
@@ -789,6 +921,23 @@ impl ApplicationHandler<UserEvent> for App {
                 self.bar_input(el, input);
                 return;
             }
+            UserEvent::WinClipboard => {
+                // Mirrorly's own writes (iPhone copies) are not Windows copies.
+                if self.clip_writing || winclip::sequence() == self.clip_sent {
+                    return;
+                }
+                self.win_copy_at = Some(Instant::now());
+                self.send_windows_clipboard(false);
+                return;
+            }
+            UserEvent::ClipWritten(seq) => {
+                self.clip_writing = false;
+                if let Some(seq) = seq {
+                    self.clip_sent = seq;
+                    self.clip_sent_hash = None;
+                }
+                return;
+            }
             UserEvent::Phones(list) => {
                 self.shared.chrome.lock().unwrap().phones = list;
                 self.update_hover();
@@ -839,6 +988,10 @@ impl ApplicationHandler<UserEvent> for App {
                 self.link = Some(link);
                 self.phone = Some(info.name.clone());
                 self.set_title();
+                // Copied on Windows while the iPhone was away: hand it over.
+                if self.win_copy_at > self.phone_copy_at {
+                    self.send_windows_clipboard(false);
+                }
             }
             DeviceEvent::Disconnected(_) => {
                 *self.shared.transport.lock().unwrap() = None;
@@ -1027,6 +1180,10 @@ impl ApplicationHandler<UserEvent> for App {
                 if event.repeat {
                     return;
                 }
+                // Ctrl+V: paste what was copied on Windows, if that is newer.
+                if code == KeyCode::KeyV && down && self.modifiers.control_key() && self.paste_from_windows() {
+                    return;
+                }
                 if let Some(usage) = hid_usage(code) {
                     if down {
                         self.keys_down.insert(usage);
@@ -1039,6 +1196,13 @@ impl ApplicationHandler<UserEvent> for App {
             _ => {}
         }
     }
+}
+
+fn hash_of(bytes: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut h);
+    h.finish()
 }
 
 /// A file Mirrorly fetched from the iPhone's clipboard.
@@ -1225,6 +1389,11 @@ fn main() -> Result<()> {
         shelf_files: Vec::new(),
         dropped: Vec::new(),
         toast_until: None,
+        clip_sent: 0,
+        clip_sent_hash: None,
+        win_copy_at: None,
+        phone_copy_at: None,
+        clip_writing: false,
         threads: Vec::new(),
     };
     event_loop.run_app(&mut app)?;
