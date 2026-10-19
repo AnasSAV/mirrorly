@@ -39,8 +39,8 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Messages]
-WelcomeLabel2=This will install [name/ver] on your computer.%n%nMirrorly shows your iPhone's screen on this PC and lets you control it with your mouse and keyboard, over USB or Wi-Fi.
-FinishedLabel=Mirrorly is installed.%n%nTo connect your iPhone:%n%n1.  Install Apple Devices from the Microsoft Store (free).%n2.  Plug in your iPhone, unlock it and tap Trust.%n3.  Turn on Developer Mode: Settings > Privacy & Security > Developer Mode.%n%nMirrorly shows these steps too, and ticks them off as you go.
+WelcomeLabel2=This will install [name/ver] on your computer.%n%nMirrorly shows your iPhone's or iPad's screen on this PC and lets you control it with your mouse and keyboard, over USB or Wi-Fi.
+FinishedLabel=Mirrorly is installed.%n%nTo connect your iPhone or iPad (iOS / iPadOS 27 or later):%n%n1.  Install Apple Devices from the Microsoft Store (free).%n2.  Plug it in, unlock it and tap Trust.%n3.  Turn on Developer Mode: Settings > Privacy & Security > Developer Mode.%n%nMirrorly shows these steps too, and ticks them off as you go.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked

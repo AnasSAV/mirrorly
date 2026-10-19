@@ -6,7 +6,7 @@
   <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/AnasSAV/mirrorly?style=flat-square&color=4C61FA&label=release"></a>
   <a href="../../releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/AnasSAV/mirrorly/total?style=flat-square&color=7B4DF2"></a>
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square">
-  <img alt="iOS 17.4 or later" src="https://img.shields.io/badge/iOS-17.4%2B-111111?style=flat-square">
+  <img alt="iOS and iPadOS 27 or later" src="https://img.shields.io/badge/iOS%20%7C%20iPadOS-27%2B-111111?style=flat-square">
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-B7410E?style=flat-square">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-22A06B?style=flat-square"></a>
 </p>
@@ -96,7 +96,7 @@ Get the latest version from **[Releases](../../releases/latest)**.
 | | Minimum | Recommended |
 |---|---|---|
 | **PC** | Windows 10 (1809) x64 | Windows 11 |
-| **iPhone** | iOS 17.4, with a passcode set | the latest iOS |
+| **iPhone or iPad** | iOS / iPadOS 27, with a passcode set | the latest version |
 | **Driver** | [Apple Devices](https://apps.microsoft.com/detail/9np83lwlpz9k) from the Microsoft Store (free) | |
 | **Wi-Fi** *(optional)* | PC and iPhone on the same network | 5 GHz |
 
@@ -113,7 +113,9 @@ flowchart LR
 1. **Install [Apple Devices](https://apps.microsoft.com/detail/9np83lwlpz9k)**
    from the Microsoft Store. It provides the driver Windows needs to talk to an
    iPhone. The Mirrorly installer offers to open the Store page if it's missing.
-2. **Plug in your iPhone, unlock it and tap Trust**, then enter your passcode.
+2. **Plug in your iPhone or iPad, unlock it and tap Trust**, then enter your
+   passcode. If it has forgotten this PC, Mirrorly asks it to trust the PC
+   again by itself.
 3. **Turn on Developer Mode:** *Settings › Privacy & Security › Developer Mode
    › On*. The iPhone restarts; unlock it and tap **Turn On**.
    If the switch isn't there yet, open Mirrorly once with the iPhone plugged
@@ -134,7 +136,7 @@ flowchart LR
 |---|---|
 | **Click** / **drag** on the screen | Tap / swipe |
 | **Mouse wheel** | Scroll |
-| **Drag up from the very bottom edge** | Go Home (pause before letting go for the App Switcher) |
+| **Drag up from the very bottom edge** | Go Home (pause before letting go for the App Switcher); works in landscape too |
 | **Drag down from the top edge** | Notification Center (left) or Control Center (right) |
 | **Right-click** | Go Home |
 | **Point at the window** | Show the bar: window buttons, copied files, Disconnect, Rotate, App Switcher, Home |
@@ -317,6 +319,7 @@ Developer Mode*, and so on.
 
 | Problem | Try |
 |---|---|
+| "Update to iOS 27" / "Update to iPadOS 27" | Mirrorly needs iOS or iPadOS 27: *Settings › General › Software Update*. |
 | "Apple Devices is required" | Install Apple Devices from the Microsoft Store, then plug the iPhone in again. |
 | Stuck on "Trust this computer" | Unlock the iPhone, tap **Trust**, enter your passcode. |
 | Black screen / "iPhone is busy" | Close the Camera, or any app using the camera or microphone. |
@@ -374,11 +377,22 @@ encoding the video. Mirrorly's own part is about 1 ms. See
 </details>
 
 <details>
-<summary><b>Which iPhones work?</b></summary>
+<summary><b>Which iPhones and iPads work?</b></summary>
 
-It should work with any iPhone on iOS 17.4 or later, the version that
-introduced the services Mirrorly uses. It is developed and tested on an
-iPhone 11 with iOS 27 on Windows 11; reports from other models are welcome.
+Any iPhone or iPad on **iOS / iPadOS 27 or later**. Apple's screen sharing and
+control service refuses older versions ("Remote control requires iOS 27.0 or
+later"), and Mirrorly then shows *Update to iOS 27* (or iPadOS 27). It is
+tested on an iPhone 11 and an iPad (10th generation) on Windows 11; reports
+from other models are welcome.
+</details>
+
+<details>
+<summary><b>Does it work with an iPad?</b></summary>
+
+Yes, in portrait and landscape. Turn the view with <kbd>F12</kbd> to match the
+iPad, and the Home and App Switcher swipes come from the bottom of what you
+see. Everything else (keyboard, clipboard, drag and drop) works the same as on
+an iPhone.
 </details>
 
 ---

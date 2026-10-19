@@ -71,7 +71,8 @@ Mirror and control your iPhone from Windows, over USB or Wi-Fi.
 Before the first run
   1. Install "Apple Devices" from the Microsoft Store (free). It provides the
      driver Windows needs to talk to an iPhone.
-  2. iPhone: iOS 17.4 or later. Plug it in, unlock it, tap "Trust".
+  2. iPhone or iPad with iOS / iPadOS 27 or later. Plug it in, unlock it,
+     tap "Trust".
   3. Turn on Developer Mode: Settings > Privacy & Security > Developer Mode
      (if it is missing, start Mirrorly once with the iPhone plugged in; the
      switch then appears).
