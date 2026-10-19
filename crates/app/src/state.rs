@@ -49,6 +49,13 @@ impl Default for View {
 }
 
 impl View {
+    /// An iPad: its panel is much squarer than an iPhone's (short/long side
+    /// above 0.6; iPhones are below 0.5).
+    pub fn is_tablet(&self) -> bool {
+        let (w, h) = (self.screen.0 as f64, self.screen.1 as f64);
+        w.min(h) / w.max(h).max(1.0) > 0.6
+    }
+
     pub fn sideways(&self) -> bool {
         matches!(self.rotation, Rotation::R90 | Rotation::R270)
     }

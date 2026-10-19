@@ -23,7 +23,7 @@ use idevice::{
         TOUCHSCREEN_STATE_CONTACT, TOUCHSCREEN_STATE_RELEASE, UniversalHidServiceClient,
     },
 };
-use input::{EdgePhase, HidEvent};
+use input::{EdgePhase, HidEvent, Side};
 use tokio::{sync::mpsc, time::Instant};
 
 pub type Uhs = UniversalHidServiceClient<Box<dyn ReadWrite>>;
@@ -172,13 +172,13 @@ fn expand(ev: HidEvent) -> Vec<(Duration, Op)> {
     match ev {
         HidEvent::Touch { x, y } => vec![(now, Op::Touch { contact: true, x, y })],
         HidEvent::Release { x, y } => vec![(now, Op::Touch { contact: false, x, y })],
-        HidEvent::Edge { phase, x, y } => {
+        HidEvent::Edge { phase, x, y, side } => {
             let phase = match phase {
                 EdgePhase::Start => DigitizerEventType::Start,
                 EdgePhase::Move => DigitizerEventType::Position,
                 EdgePhase::End => DigitizerEventType::End,
             };
-            vec![(now, Op::Edge { phase, x, y, edge: DigitizerEdge::Bottom })]
+            vec![(now, Op::Edge { phase, x, y, edge: digitizer_edge(side) })]
         }
         HidEvent::Key { usage, down } => vec![(now, Op::Key { usage, down })],
         HidEvent::Button { button } => {
@@ -188,7 +188,7 @@ fn expand(ev: HidEvent) -> Vec<(Duration, Op)> {
                 (Duration::from_millis(hold), Op::Button { page, usage, down: false }),
             ]
         }
-        HidEvent::AppSwitcher => app_switcher_script(),
+        HidEvent::AppSwitcher { side, travel } => app_switcher_script(side, travel),
         HidEvent::Scroll { x, y, dx, dy } => scroll_script(x, y, dx, dy),
     }
 }
@@ -219,20 +219,37 @@ fn scroll_script(x: u16, y: u16, dx: f64, dy: f64) -> Vec<(Duration, Op)> {
 
 /// Bottom-edge swipe to 30 % of the height over 400 ms, hold 800 ms,
 /// release: the timing that opened the App Switcher in Phase 0 (Test C).
-fn app_switcher_script() -> Vec<(Duration, Op)> {
+/// The Indigo edge flag for a panel edge: it names the panel edge the
+/// swipe starts on (an iPad in landscape takes Home from its left side,
+/// flagged left; 2026-10-19).
+fn digitizer_edge(side: Side) -> DigitizerEdge {
+    match side {
+        Side::Top => DigitizerEdge::Top,
+        Side::Bottom => DigitizerEdge::Bottom,
+        Side::Left => DigitizerEdge::Left,
+        Side::Right => DigitizerEdge::Right,
+    }
+}
+
+/// Swipe in from `side` by `travel`, then hold: the App Switcher. Measured:
+/// iPhone 11 upright 0.30 (to y = 0.70); iPad 10th generation in landscape
+/// 0.45 (a 0.85 flick goes Home instead).
+fn app_switcher_script(side: Side, travel: f64) -> Vec<(Duration, Op)> {
     const STEP_MS: u64 = 8;
     const SWIPE_MS: u64 = 400;
     const HOLD_MS: u64 = 800;
-    const END_Y: f64 = 0.70;
-    let mut ops = vec![(Duration::ZERO, Op::Edge { phase: DigitizerEventType::Start, x: 0.5, y: 1.0, edge: DigitizerEdge::Bottom })];
+    let edge = digitizer_edge(side);
+    let (x0, y0) = side.at(0.5);
+    let (x1, y1) = side.inward(0.5, travel);
+    let mut ops = vec![(Duration::ZERO, Op::Edge { phase: DigitizerEventType::Start, x: x0, y: y0, edge })];
     let mut t = STEP_MS;
     while t <= SWIPE_MS + HOLD_MS {
         let f = (t as f64 / SWIPE_MS as f64).min(1.0);
-        let y = 1.0 + (END_Y - 1.0) * f;
-        ops.push((Duration::from_millis(t), Op::Edge { phase: DigitizerEventType::Position, x: 0.5, y, edge: DigitizerEdge::Bottom }));
+        let (x, y) = (x0 + (x1 - x0) * f, y0 + (y1 - y0) * f);
+        ops.push((Duration::from_millis(t), Op::Edge { phase: DigitizerEventType::Position, x, y, edge }));
         t += STEP_MS;
     }
-    ops.push((Duration::from_millis(t), Op::Edge { phase: DigitizerEventType::End, x: 0.5, y: END_Y, edge: DigitizerEdge::Bottom }));
+    ops.push((Duration::from_millis(t), Op::Edge { phase: DigitizerEventType::End, x: x1, y: y1, edge }));
     ops
 }
 
@@ -274,8 +291,8 @@ mod tests {
         assert!(!superseded(true, &t, Some(&r)), "last sample before release is kept");
         assert!(!superseded(true, &t, None));
         assert!(!superseded(true, &r, Some(&t)));
-        let m = HidEvent::Edge { phase: EdgePhase::Move, x: 0.5, y: 0.9 };
-        let end = HidEvent::Edge { phase: EdgePhase::End, x: 0.5, y: 0.8 };
+        let m = HidEvent::Edge { phase: EdgePhase::Move, x: 0.5, y: 0.9, side: Side::Bottom };
+        let end = HidEvent::Edge { phase: EdgePhase::End, x: 0.5, y: 0.8, side: Side::Bottom };
         assert!(superseded(false, &m, Some(&end)));
         assert!(!superseded(false, &end, None));
     }
@@ -291,10 +308,18 @@ mod tests {
 
     #[test]
     fn app_switcher_script_shape() {
-        let ops = app_switcher_script();
+        let ops = app_switcher_script(Side::Bottom, 0.30);
         assert!(matches!(ops.first().unwrap().1, Op::Edge { phase: DigitizerEventType::Start, y, .. } if y == 1.0));
-        assert!(matches!(ops.last().unwrap().1, Op::Edge { phase: DigitizerEventType::End, .. }));
+        assert!(matches!(ops.last().unwrap().1, Op::Edge { phase: DigitizerEventType::End, y, .. } if (y - 0.70).abs() < 1e-9));
         assert!(ops.last().unwrap().0 >= Duration::from_millis(1200));
         assert!(ops.windows(2).all(|w| w[0].0 <= w[1].0));
+    }
+
+    #[test]
+    fn app_switcher_from_the_side_in_landscape() {
+        // iPad in landscape: from the panel's left side, 0.45 in, flagged left.
+        let ops = app_switcher_script(Side::Left, 0.45);
+        assert!(matches!(ops.first().unwrap().1, Op::Edge { x, y, edge: DigitizerEdge::Left, .. } if x == 0.0 && y == 0.5));
+        assert!(matches!(ops.last().unwrap().1, Op::Edge { x, edge: DigitizerEdge::Left, .. } if (x - 0.45).abs() < 1e-9));
     }
 }

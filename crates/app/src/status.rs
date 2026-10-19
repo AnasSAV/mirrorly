@@ -34,7 +34,13 @@ pub fn progress_page(s: &str) -> Page {
 }
 
 fn progress(s: &str) -> Page {
-    if s.starts_with("Looking for the iPhone on Wi-Fi") {
+    if let Some(rest) = s.strip_prefix("Waiting for Trust on the ") {
+        let class = rest.trim_end_matches('…');
+        page(
+            "Trust this computer",
+            &format!("Unlock your {class}. When it asks \"Trust This Computer?\", tap Trust and enter its passcode."),
+        )
+    } else if s.starts_with("Looking for the iPhone on Wi-Fi") {
         page("Looking for your iPhone…", "Keep your iPhone unlocked and on the same Wi-Fi network as this PC.")
     } else if let Some(rest) = s.strip_prefix("Connecting over Wi-Fi") {
         page("Connecting over Wi-Fi…", rest.trim_matches(|c: char| c == ' ' || c == '(' || c == ')' || c == '…'))
@@ -53,6 +59,21 @@ fn problem(reason: &str) -> Page {
         page(
             "Apple Devices is required",
             "Install the Apple Devices app from the Microsoft Store (it provides the iPhone USB driver), then plug your iPhone in again.",
+        )
+    } else if let Some(rest) = reason.strip_prefix(device::NEEDS_27) {
+        // ": this iPad has iPadOS 26.1"
+        let what = rest.trim_start_matches(|c: char| c == ':' || c == ' ');
+        let class = if what.contains("iPad") { "iPad" } else { "iPhone" };
+        let os = if class == "iPad" { "iPadOS" } else { "iOS" };
+        page(
+            &format!("Update to {os} 27"),
+            &format!("Apple's screen sharing and control need {os} 27 or later, and {what}. Update in Settings › General › Software Update."),
+        )
+    } else if r.contains("requires ios 27") {
+        // The device's own refusal (over Wi-Fi, where the version isn't fresh).
+        page(
+            "Update to iOS 27",
+            "Apple's screen sharing and control need iOS or iPadOS 27 or later on this device. Update in Settings › General › Software Update.",
         )
     } else if r.contains("developer mode is off") {
         page(
@@ -86,6 +107,15 @@ mod tests {
 
     fn title(ev: DeviceEvent) -> String {
         describe(&ev).unwrap().0
+    }
+
+    #[test]
+    fn too_old_ios_says_which_update() {
+        let ev = |s: String| DeviceEvent::Disconnected(s);
+        let ipad = describe(&ev(format!("{}: this iPad has iPadOS 26.1", device::NEEDS_27))).unwrap();
+        assert_eq!(ipad.0, "Update to iPadOS 27");
+        assert!(ipad.1.contains("this iPad has iPadOS 26.1"));
+        assert_eq!(title(ev(format!("{}: this iPhone has iOS 18.2", device::NEEDS_27))), "Update to iOS 27");
     }
 
     #[test]

@@ -409,7 +409,7 @@ impl App {
                 self.apply_size();
             }
             Control::Rotate => self.rotate(true),
-            Control::AppSwitcher => self.send(HidEvent::AppSwitcher),
+            Control::AppSwitcher => self.send(self.app_switcher()),
             Control::Home => self.send(HidEvent::Button { button: Button::Home }),
             Control::Shelf => self.drag_shelf(),
             Control::Power => {
@@ -742,6 +742,15 @@ impl App {
         });
     }
 
+    /// The App Switcher swipe for this device and view: from the bottom of
+    /// what is shown, further on an iPad (0.45, measured) than an iPhone
+    /// (0.30).
+    fn app_switcher(&self) -> HidEvent {
+        let v = self.shared.view.lock().unwrap();
+        let travel = if v.is_tablet() { 0.45 } else { 0.30 };
+        HidEvent::AppSwitcher { side: v.rotation.bottom_side(), travel }
+    }
+
     /// Lift everything the phone thinks is held (focus loss, disconnect).
     fn release_all(&mut self) {
         if let Some(ev) = self.gesture.up(None) {
@@ -754,12 +763,11 @@ impl App {
         self.slot.request_redraw();
     }
 
-    fn mapper(&self) -> (input::geom::Mapper, bool) {
+    fn mapper(&self) -> (input::geom::Mapper, input::Side) {
         let v = self.shared.view.lock().unwrap();
         let m = v.mapper();
-        // The bottom-edge gesture is only verified with the picture upright.
-        let upright = v.rotation == input::geom::Rotation::R0;
-        (m, upright)
+        // Home / App Switcher swipes start at the bottom of what is shown.
+        (m, v.rotation.bottom_side())
     }
 
     /// The hover bar's controls, in its own client pixels.
@@ -1085,7 +1093,7 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
-                let (m, upright) = self.mapper();
+                let (m, bottom) = self.mapper();
                 match (button, state) {
                     (MouseButton::Left, ElementState::Pressed) => {
                         if self.connect_button_at(self.cursor.0, self.cursor.1) {
@@ -1105,7 +1113,7 @@ impl ApplicationHandler<UserEvent> for App {
                             // queued: it is the perceived-latency trick.
                             let t = now_us();
                             self.set_indicator(|i| *i = Some(Indicator { panel: p, down_us: t, released_us: None }));
-                            let ev = self.gesture.down(p, upright);
+                            let ev = self.gesture.down(p, bottom);
                             self.send(ev);
                             self.update_hover();
                         }
@@ -1152,7 +1160,7 @@ impl ApplicationHandler<UserEvent> for App {
                     if down && !event.repeat {
                         match id {
                             "home" => self.send(HidEvent::Button { button: Button::Home }),
-                            "switcher" => self.send(HidEvent::AppSwitcher),
+                            "switcher" => self.send(self.app_switcher()),
                             // Ctrl is already held on the phone as Command:
                             // add Space for Command-Space (Spotlight).
                             "spotlight" => {

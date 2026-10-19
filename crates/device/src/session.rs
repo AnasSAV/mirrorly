@@ -58,6 +58,9 @@ pub enum DeviceEvent {
     Clipboard(ClipEvent),
 }
 
+/// Start of the reason given when the device's iOS is older than 27.
+pub const NEEDS_27: &str = "Mirrorly needs iOS or iPadOS 27";
+
 /// The reason given with `Disconnected` when the user disconnected.
 pub const USER_DISCONNECT: &str = "disconnected by the user";
 
@@ -414,7 +417,31 @@ async fn prepare(
     let (mut t, info) = match usb_device_for(target).await {
         Ok(dev) => {
             let provider = NoDelayUsbmux::new(&dev);
-            let info = read_info(&provider, &dev.udid).await?;
+            let info = match read_info(&provider, &dev.udid).await {
+                // The device forgot this PC (or never trusted it): ask it to
+                // trust us again, then carry on.
+                Err(e) if needs_pairing(&e) => {
+                    // Mirrorly's own record may be the stale one (Apple's
+                    // tools re-paired since): try Apple's record first.
+                    let retried = if crate::pairing::forget_own_record(&dev.udid) {
+                        read_info(&provider, &dev.udid).await.ok()
+                    } else {
+                        None
+                    };
+                    match retried {
+                        Some(info) => info,
+                        None => {
+                            tracing::warn!("{e:#}: asking the device to trust this PC again");
+                            crate::pairing::repair(&provider, &dev.udid, |class| {
+                                on_event(DeviceEvent::Status(format!("Waiting for Trust on the {class}…")))
+                            })
+                            .await?;
+                            read_info(&provider, &dev.udid).await?
+                        }
+                    }
+                }
+                r => r?,
+            };
             if opts.wifi {
                 if let Err(e) = wifi::save_info(&info) {
                     tracing::warn!("could not cache device info for Wi-Fi: {e:#}");
@@ -472,6 +499,18 @@ async fn prepare(
     };
     for (stage, ms) in &t.timings {
         tracing::info!("{:?} tunnel: {stage} {ms:.0} ms", info.transport);
+    }
+    // Apple's remote screen and control service needs iOS/iPadOS 27: older
+    // devices refuse it ("Remote control requires iOS 27.0 or later on this
+    // device", CoreDevice 9021, seen on iPadOS 26.1).
+    // Only judged on fresh details (USB): over Wi-Fi the version is the one
+    // remembered from the last USB connection, possibly before an update;
+    // there the device's own refusal is shown instead.
+    let major = info.ios_version.split('.').next().and_then(|m| m.parse::<u32>().ok());
+    if info.transport == Transport::Usb && major.is_some_and(|m| m < 27) {
+        let class = if info.product_type.starts_with("iPad") { "iPad" } else { "iPhone" };
+        let os = if class == "iPad" { "iPadOS" } else { "iOS" };
+        bail!("{NEEDS_27}: this {class} has {os} {}", info.ios_version);
     }
     if !t.handshake.services.contains_key(DISPLAY_SERVICE) {
         if ddi::installed(&mut t).await?.is_some() {
@@ -531,6 +570,17 @@ async fn rx_loop<S: MediaSink>(
             fb.request_keyframe();
         }
     }
+}
+
+/// The device doesn't know this PC (InvalidHostID), this PC has no record
+/// for it, or the records don't match (the session's TLS handshake fails:
+/// the device was paired again elsewhere).
+fn needs_pairing(e: &anyhow::Error) -> bool {
+    e.chain().any(|c| {
+        matches!(c.downcast_ref::<idevice::IdeviceError>(), Some(idevice::IdeviceError::InvalidHostID))
+            || c.to_string().starts_with("no pairing record")
+            || c.to_string().contains("tls handshake")
+    })
 }
 
 async fn read_info(provider: &NoDelayUsbmux, udid: &str) -> Result<DeviceInfo> {

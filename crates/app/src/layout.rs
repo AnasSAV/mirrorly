@@ -44,10 +44,15 @@ pub struct Toolbar {
     pub shelf: Option<Rect>,
 }
 
-/// iPhone display corners are ~10 % of the panel width (iPhone 11:
-/// 41.5 pt on a 414 pt wide screen).
+/// Screen corner radius. iPhone corners are ~10 % of the panel width
+/// (iPhone 11: 41.5 pt on a 414 pt wide screen); iPad corners are far
+/// tighter (iPad 10th generation: 18 pt on 820 pt, ~2.2 %). iPads are much
+/// squarer (short/long side above 0.6, iPhones below 0.5), which tells them
+/// apart without knowing the model.
 pub fn corner_radius(view: Rect) -> f64 {
-    0.10 * view.w.min(view.h)
+    let (short, long) = (view.w.min(view.h), view.w.max(view.h));
+    let tablet = long > 0.0 && short / long > 0.6;
+    short * if tablet { 0.022 } else { 0.10 }
 }
 
 /// Lay out the controls inside `bar`, with the shelf chip when something
@@ -183,6 +188,17 @@ mod tests {
             assert!(row.y + row.h <= view.y + view.h);
             assert!(inside(*row, forget.x + 1.0, forget.y + 1.0), "Forget sits inside its row");
         }
+    }
+
+    #[test]
+    fn ipad_corners_are_tighter_than_iphone_corners() {
+        // iPhone 11 panel and iPad 10th generation panel, either way up.
+        let iphone = corner_radius(Rect { x: 0.0, y: 0.0, w: 414.0, h: 896.0 });
+        let ipad = corner_radius(Rect { x: 0.0, y: 0.0, w: 820.0, h: 1180.0 });
+        let ipad_landscape = corner_radius(Rect { x: 0.0, y: 0.0, w: 1180.0, h: 820.0 });
+        assert!((iphone - 41.4).abs() < 0.1);
+        assert!((ipad - 18.0).abs() < 0.2);
+        assert_eq!(ipad, ipad_landscape);
     }
 
     #[test]

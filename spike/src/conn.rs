@@ -82,7 +82,16 @@ impl IdeviceProvider for NoDelayUsbmux {
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>> {
         let udid = self.udid.clone();
-        Box::pin(async move { usbmuxd().await?.get_pair_record(&udid).await })
+        Box::pin(async move {
+            // Mirrorly keeps its own record when Apple's service refuses a
+            // re-pairing (device::pairing); prefer it, as the app does.
+            let base = std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from).unwrap_or_default();
+            let own = base.join("Mirrorly").join("pairing").join(format!("{udid}.plist"));
+            if let Ok(p) = PairingFile::read_from_file(&own) {
+                return Ok(p);
+            }
+            usbmuxd().await?.get_pair_record(&udid).await
+        })
     }
 }
 

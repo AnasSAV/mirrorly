@@ -31,7 +31,10 @@ impl VideoSink {
 }
 
 impl MediaSink for VideoSink {
-    fn session_started(&mut self, _info: &DeviceInfo, _keyframes: KeyframeRequester) {
+    fn session_started(&mut self, info: &DeviceInfo, _keyframes: KeyframeRequester) {
+        // The device's panel, before its first frame is drawn (an iPad's
+        // differs from the iPhone default; the window follows on Connected).
+        self.shared.view.lock().unwrap().screen = (info.screen_w, info.screen_h);
         self.depack = Depacketizer::new();
         self.reported_lost = 0;
         self.waiting_key = true;

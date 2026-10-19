@@ -109,7 +109,19 @@ pub fn spawn(
             let (window, scene_view, uv_max, rotation, dots) = {
                 let mut v = shared.view.lock().unwrap();
                 if let Some(f) = &frame {
-                    v.tex = Some((f.picture.tex_width, f.picture.tex_height));
+                    let tex = Some((f.picture.tex_width, f.picture.tex_height));
+                    if v.tex != tex {
+                        tracing::info!(
+                            "picture: coded {}x{} in a {}x{} texture; panel {}x{}",
+                            f.picture.width,
+                            f.picture.height,
+                            f.picture.tex_width,
+                            f.picture.tex_height,
+                            v.screen.0,
+                            v.screen.1
+                        );
+                    }
+                    v.tex = tex;
                     if is_new {
                         responded_tap = update_indicator(&mut v.indicator, f, &mut sizes, wake);
                     }

@@ -67,6 +67,7 @@ pub async fn start(t: &mut Tunnel, display_id: i64) -> Result<MediaSession> {
             session_id,
         ))
         .await
+        .map_err(readable)
         .context("audio startmediastream")?;
 
     let video_call = uuid::Uuid::new_v4().to_string().to_uppercase();
@@ -84,6 +85,7 @@ pub async fn start(t: &mut Tunnel, display_id: i64) -> Result<MediaSession> {
             session_id,
         ))
         .await
+        .map_err(readable)
         .context("video startmediastream")?;
 
     // Names in streamConfig are from the device's point of view.
@@ -127,5 +129,34 @@ fn as_int(v: &plist::Value) -> Option<i64> {
         plist::Value::String(s) => s.parse().ok(),
         plist::Value::Dictionary(d) => d.get("int").or(d.get("uint")).and_then(as_int),
         _ => None,
+    }
+}
+
+/// A CoreDevice error as its message ("Remote control requires iOS 27.0 or
+/// later on this device.") instead of the whole reply with its archived
+/// user info.
+fn readable(e: idevice::IdeviceError) -> anyhow::Error {
+    let text = e.to_string();
+    let key = "\"NSLocalizedDescription\": String(\"";
+    match text.find(key).map(|i| &text[i + key.len()..]).and_then(|rest| rest.split_once("\")")) {
+        Some((msg, _)) => anyhow::anyhow!("{msg}"),
+        None => anyhow::Error::new(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn device_errors_read_as_their_message() {
+        // Shape of the iPadOS 26.1 reply (archive bytes trimmed).
+        let mut info = plist::Dictionary::new();
+        info.insert("NSLocalizedDescription".into(), "Remote control requires iOS 27.0 or later on this device.".into());
+        let mut d = plist::Dictionary::new();
+        d.insert("code".into(), 9021.into());
+        d.insert("userInfo".into(), plist::Value::Dictionary(info));
+        let e = idevice::IdeviceError::UnexpectedResponse(format!("{:?}", plist::Value::Dictionary(d)));
+        assert_eq!(super::readable(e).to_string(), "Remote control requires iOS 27.0 or later on this device.");
+        let plain = super::readable(idevice::IdeviceError::UnexpectedResponse("odd".into()));
+        assert!(plain.to_string().contains("odd"));
     }
 }

@@ -9,6 +9,7 @@ pub mod ddi;
 pub mod feedback;
 pub mod hid;
 pub mod media;
+pub mod pairing;
 pub mod paths;
 pub mod phones;
 pub mod session;
@@ -16,6 +17,6 @@ pub mod wifi;
 
 pub use feedback::RctlMode;
 pub use session::{
-    DeviceEvent, DeviceHandle, DeviceInfo, InputSender, KeyframeRequester, MediaSink, Options, Transport, USER_DISCONNECT,
+    DeviceEvent, DeviceHandle, DeviceInfo, InputSender, KeyframeRequester, MediaSink, NEEDS_27, Options, Transport, USER_DISCONNECT,
     start,
 };

@@ -26,6 +26,7 @@ idevice = { version = "=0.1.68", default-features = false, features = [
   "afc",
   "house_arrest",
   "installation_proxy",
+  "pair",
 ] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync", "fs", "io-util"] }
 plist = "1.8"

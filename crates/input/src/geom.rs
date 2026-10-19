@@ -55,6 +55,20 @@ impl Rotation {
         }
     }
 
+    /// The panel edge at the bottom of the displayed picture: where Home and
+    /// App Switcher swipes start. Upright that is the panel's bottom; turned
+    /// for landscape it is a side (verified on an iPad, 2026-10-19: in
+    /// landscape the swipe must come from that side and be flagged so).
+    pub fn bottom_side(self) -> crate::Side {
+        use crate::Side;
+        match self.picture_to_panel(0.5, 1.0) {
+            (_, y) if y >= 1.0 => Side::Bottom,
+            (_, y) if y <= 0.0 => Side::Top,
+            (x, _) if x <= 0.0 => Side::Left,
+            _ => Side::Right,
+        }
+    }
+
     /// Point in the displayed picture (u, v in 0..1) -> panel (x, y in 0..1).
     pub fn picture_to_panel(self, u: f64, v: f64) -> (f64, f64) {
         match self {
@@ -120,6 +134,16 @@ pub fn to_u16(v: f64) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bottom_side_follows_the_view() {
+        use crate::Side;
+        assert_eq!(Rotation::R0.bottom_side(), Side::Bottom);
+        assert_eq!(Rotation::R90.bottom_side(), Side::Right);
+        assert_eq!(Rotation::R180.bottom_side(), Side::Top);
+        // The iPad landscape case measured on 2026-10-19.
+        assert_eq!(Rotation::R270.bottom_side(), Side::Left);
+    }
 
     fn close(a: (f64, f64), b: (f64, f64)) -> bool {
         (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9

@@ -94,11 +94,18 @@ impl IdeviceProvider for NoDelayUsbmux {
         LABEL
     }
 
+    /// Mirrorly's own record for the device if it keeps one (made when
+    /// Apple's service would not store a re-pairing), else Apple's.
     fn get_pairing_file(
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>> {
         let udid = self.udid.clone();
-        Box::pin(async move { usbmuxd().await?.get_pair_record(&udid).await })
+        Box::pin(async move {
+            if let Some(p) = crate::pairing::own_record(&udid) {
+                return Ok(p);
+            }
+            usbmuxd().await?.get_pair_record(&udid).await
+        })
     }
 }
 
@@ -119,7 +126,7 @@ pub async fn open_tunnel(provider: &NoDelayUsbmux) -> Result<Tunnel> {
     let t = Instant::now();
     let proxy = CoreDeviceProxy::connect(provider)
         .await
-        .context("CoreDeviceProxy failed (needs iOS 17.4+, Trust, Developer Mode, unlocked)")?;
+        .context("CoreDeviceProxy failed (needs Trust, Developer Mode, unlocked)")?;
     timings.push(("lockdown + CoreDeviceProxy handshake", ms(t)));
     let info = proxy.tunnel_info().clone();
 
