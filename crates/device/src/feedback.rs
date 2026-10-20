@@ -7,6 +7,7 @@
 //! - pymobiledevice3 (described as byte-exact to Xcode): RTP ts>>8, packets in
 //!   the last frame, arrival clock on the 24 kHz media base, packet counter
 //!   with a 0xEA61 constant.
+//!
 //! We don't guess: both are selectable and Phase 0 measures which keeps the
 //! encoder healthiest.
 

@@ -64,8 +64,9 @@ pub fn listen(hwnd: isize, on_change: impl Fn() + 'static) -> windows::core::Res
         let h = HWND(hwnd as _);
         // Lives as long as the window (the app's lifetime).
         let boxed: Box<dyn Fn()> = Box::new(on_change);
-        let cb: &'static Box<dyn Fn()> = Box::leak(Box::new(boxed));
-        let _ = SetWindowSubclass(h, Some(proc), LISTEN_ID, cb as *const Box<dyn Fn()> as usize);
+        // A thin pointer to the (fat) callback, for the subclass data.
+        let cb: *mut Box<dyn Fn()> = Box::into_raw(Box::new(boxed));
+        let _ = SetWindowSubclass(h, Some(proc), LISTEN_ID, cb as usize);
         AddClipboardFormatListener(h)
     }
 }
@@ -140,19 +141,20 @@ pub fn read(hwnd: isize) -> Option<WinClip> {
                 .collect::<Vec<_>>();
             return (!files.is_empty()).then_some(WinClip::Files(files));
         }
-        if png != 0 && available(png) {
-            if let Some(b) = bytes(png).filter(|b| b.starts_with(b"\x89PNG") && b.len() <= MAX_IMAGE_BYTES) {
-                return Some(WinClip::Image(b));
-            }
+        if png != 0
+            && available(png)
+            && let Some(b) = bytes(png).filter(|b| b.starts_with(b"\x89PNG") && b.len() <= MAX_IMAGE_BYTES)
+        {
+            return Some(WinClip::Image(b));
         }
-        if available(CF_DIB.0 as u32) {
-            if let Some(b) = bytes(CF_DIB.0 as u32).and_then(|d| dib_to_png(&d)).filter(|b| b.len() <= MAX_IMAGE_BYTES) {
-                return Some(WinClip::Image(b));
-            }
+        if available(CF_DIB.0 as u32)
+            && let Some(b) = bytes(CF_DIB.0 as u32).and_then(|d| dib_to_png(&d)).filter(|b| b.len() <= MAX_IMAGE_BYTES)
+        {
+            return Some(WinClip::Image(b));
         }
         if available(CF_UNICODETEXT.0 as u32) {
             let b = bytes(CF_UNICODETEXT.0 as u32)?;
-            let units: Vec<u16> = b.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+            let units: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
             let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
             let text = String::from_utf16_lossy(&units[..end]);
             return (!text.is_empty() && text.len() <= MAX_TEXT_BYTES).then_some(WinClip::Text(text));
@@ -206,8 +208,8 @@ pub fn dib_to_png(dib: &[u8]) -> Option<Vec<u8>> {
         }
     }
     // 32-bit DIBs usually leave alpha at 0, meaning "no alpha".
-    if bpp == 32 && rgba.chunks_exact(4).all(|px| px[3] == 0) {
-        rgba.chunks_exact_mut(4).for_each(|px| px[3] = 255);
+    if bpp == 32 && rgba.as_chunks::<4>().0.iter().all(|px| px[3] == 0) {
+        rgba.as_chunks_mut::<4>().0.iter_mut().for_each(|px| px[3] = 255);
     }
     let mut out = Vec::new();
     {
@@ -464,7 +466,7 @@ mod write_tests {
         let b = hdrop(&[PathBuf::from("C:\\a.jpg"), PathBuf::from("C:\\é.pdf")]);
         assert_eq!(&b[..4], &20u32.to_le_bytes());
         assert_eq!(&b[16..20], &1u32.to_le_bytes(), "wide paths");
-        let units: Vec<u16> = b[20..].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        let units: Vec<u16> = b[20..].as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
         assert_eq!(String::from_utf16(&units).unwrap(), "C:\\a.jpg\0C:\\é.pdf\0\0");
     }
 

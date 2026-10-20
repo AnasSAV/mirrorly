@@ -1,0 +1,72 @@
+# Every push to main and every pull request: build the whole workspace on
+# Windows, lint it with Clippy (warnings are errors) and run the tests.
+#
+# Mirrorly is Windows-only. The FFmpeg bindings are generated with bindgen,
+# which needs LLVM (preinstalled on the runner, see .cargo/config.toml) and
+# the MSVC headers (msvc-dev-cmd). FFmpeg itself is BtbN's 9.0 LGPL shared
+# build, the one releases ship; it is downloaded once and cached.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip
+
+jobs:
+  build:
+    name: Build, lint and test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: MSVC environment (headers for bindgen)
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Rust (stable, with Clippy)
+        shell: pwsh
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+          rustc --version
+
+      - name: FFmpeg from cache
+        id: ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: third_party/ffmpeg
+          key: ffmpeg-n9.0-lgpl-shared-win64-v1
+
+      - name: Download FFmpeg 9.0 (LGPL, shared)
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest $env:FFMPEG_URL -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-unzipped
+          New-Item -ItemType Directory -Force third_party | Out-Null
+          Move-Item (Get-ChildItem ffmpeg-unzipped -Directory | Select-Object -First 1).FullName third_party/ffmpeg
+          Get-Content third_party/ffmpeg/include/libavutil/ffversion.h | Select-String FFMPEG_VERSION
+
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        shell: pwsh
+        run: |
+          $env:PATH = "$PWD\third_party\ffmpeg\bin;$env:PATH"
+          cargo test --workspace

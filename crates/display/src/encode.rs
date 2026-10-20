@@ -77,7 +77,7 @@ unsafe fn drain(ctx: *mut ff::AVCodecContext, pkt: *mut ff::AVPacket, out: &mut 
                 bail!("avcodec_receive_packet ({r})");
             }
             let p = &*pkt;
-            out(std::slice::from_raw_parts(p.data, p.size as usize), p.flags & ff::AV_PKT_FLAG_KEY as i32 != 0);
+            out(std::slice::from_raw_parts(p.data, p.size as usize), p.flags & ff::AV_PKT_FLAG_KEY != 0);
             ff::av_packet_unref(pkt);
         }
     }

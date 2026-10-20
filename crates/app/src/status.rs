@@ -62,7 +62,7 @@ fn problem(reason: &str) -> Page {
         )
     } else if let Some(rest) = reason.strip_prefix(device::NEEDS_27) {
         // ": this iPad has iPadOS 26.1"
-        let what = rest.trim_start_matches(|c: char| c == ':' || c == ' ');
+        let what = rest.trim_start_matches([':', ' ']);
         let class = if what.contains("iPad") { "iPad" } else { "iPhone" };
         let os = if class == "iPad" { "iPadOS" } else { "iOS" };
         page(

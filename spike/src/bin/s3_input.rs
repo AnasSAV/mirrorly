@@ -510,6 +510,7 @@ fn ascii_usage(c: char) -> Option<(u16, bool)> {
 /// until the first access unit that is clearly larger than idle frames starts
 /// arriving. Covers iOS input handling + render + encode + transport; not our
 /// decode/present (s4 measures decode).
+#[allow(clippy::too_many_arguments)] // a measurement probe: every knob is a flag
 async fn latency(
     uhs: &mut Uhs,
     mut aus: mpsc::UnboundedReceiver<watch::AuEvent>,

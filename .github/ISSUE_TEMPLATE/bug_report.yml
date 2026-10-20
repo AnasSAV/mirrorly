@@ -1,0 +1,66 @@
+name: Something doesn't work
+description: Mirrorly misbehaves, shows an error, or can't connect.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The log usually says what went wrong: it is at
+        `%LOCALAPPDATA%\Mirrorly\logs\Mirrorly.log` (paste that path into File Explorer's address bar).
+        For the iPad display's one-time setup, also `display-setup.log` in the same folder.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mirrorly version
+      description: In the installer's name, or Explorer › Mirrorly.exe › Properties › Details.
+      placeholder: "0.6.0"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: iPhone or iPad, and its iOS / iPadOS version
+      placeholder: "iPhone 11, iOS 27.0.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: link
+    attributes:
+      label: Connected by
+      options: [USB, Wi-Fi, Both / switching, "Not connecting at all"]
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part
+      options:
+        - Connecting / trust / Developer Mode
+        - The picture (black, frozen, slow, wrong colours)
+        - Mouse or keyboard control
+        - Drag and drop / clipboard
+        - Screenshots or recordings
+        - iPad as a display
+        - Installer or updates
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version, and graphics
+      description: "Settings › System › About. Graphics: Device Manager › Display adapters."
+      placeholder: "Windows 11 24H2; Intel UHD + NVIDIA RTX 4050"
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Drag Mirrorly.log here, or paste the end of it. It contains no passwords, but does contain your device's name.
+      render: text

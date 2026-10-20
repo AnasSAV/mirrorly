@@ -55,8 +55,10 @@ fn wide(s: &[u16]) -> String {
     String::from_utf16_lossy(&s[..s.iter().position(|&c| c == 0).unwrap_or(s.len())])
 }
 
-/// (adapter, output, adapter name, device name, width, height)
-fn outputs() -> Result<Vec<(IDXGIAdapter1, IDXGIOutput, String, String, i32, i32)>> {
+/// adapter, output, adapter name, device name, width, height
+type Output = (IDXGIAdapter1, IDXGIOutput, String, String, i32, i32);
+
+fn outputs() -> Result<Vec<Output>> {
     let mut out = Vec::new();
     unsafe {
         let factory: IDXGIFactory1 = CreateDXGIFactory1()?;

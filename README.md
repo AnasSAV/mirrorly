@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/AnasSAV/mirrorly?style=flat-square&color=4C61FA&label=release"></a>
+  <a href="../../actions/workflows/ci.yml"><img alt="CI" src="https://github.com/AnasSAV/mirrorly/actions/workflows/ci.yml/badge.svg"></a>
   <a href="../../releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/AnasSAV/mirrorly/total?style=flat-square&color=7B4DF2"></a>
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square">
   <img alt="iOS and iPadOS 27 or later" src="https://img.shields.io/badge/iOS%20%7C%20iPadOS-27%2B-111111?style=flat-square">
@@ -21,6 +22,7 @@
   <a href="#usb-and-wi-fi">USB &amp; Wi-Fi</a> ·
   <a href="#performance">Performance</a> ·
   <a href="#faq">FAQ</a> ·
+  <a href="../../wiki">Wiki</a> ·
   <a href="#for-developers">Developers</a>
 </p>
 
@@ -528,7 +530,9 @@ threads so input never waits on video:
 | [`spike/`](spike), [`spike-decode/`](spike-decode) | Measurement and protocol probes (`s0`–`s10`) |
 
 Design notes: [FEASIBILITY.md](FEASIBILITY.md) (what the iPhone offers, and
-how it was verified) and [LATENCY.md](LATENCY.md) (method and results).
+how it was verified) and [LATENCY.md](LATENCY.md) (method and results). The
+[wiki](../../wiki) has guides for every feature, the architecture, and how CI
+and releases work; its pages live in [`docs/wiki`](docs/wiki).
 
 ### Build
 

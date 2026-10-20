@@ -1,0 +1,74 @@
+# Build the release packages (installer, portable zip, checksums) on a
+# clean machine, exactly as packaging/build-release.ps1 does locally, and
+# keep them as workflow artifacts. Run it by hand (Actions › Package › Run
+# workflow), and it runs for every version tag (v*).
+#
+# It does not publish anything: a release is still made with
+# `gh release create` (see the wiki's "Releases" page). It shows that a
+# release builds from the repository alone, on a machine with nothing
+# preinstalled, and its packages can be downloaded to try a build.
+
+name: Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip
+
+jobs:
+  package:
+    name: Installer and portable zip
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust (stable)
+        shell: pwsh
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: FFmpeg from cache
+        id: ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: third_party/ffmpeg
+          key: ffmpeg-n9.0-lgpl-shared-win64-v1
+
+      - name: Download FFmpeg 9.0 (LGPL, shared)
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest $env:FFMPEG_URL -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-unzipped
+          New-Item -ItemType Directory -Force third_party | Out-Null
+          Move-Item (Get-ChildItem ffmpeg-unzipped -Directory | Select-Object -First 1).FullName third_party/ffmpeg
+
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Packaging tools (cargo-about, Inno Setup)
+        shell: pwsh
+        run: |
+          cargo install cargo-about --features cli --locked
+          choco install innosetup --no-progress -y
+
+      - name: Build the packages
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File packaging\build-release.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mirrorly-${{ github.ref_name }}
+          path: |
+            dist/Mirrorly-Setup-*.exe
+            dist/Mirrorly-*-portable.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error

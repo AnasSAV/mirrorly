@@ -95,6 +95,9 @@ pub struct Metrics {
     display: VecDeque<DisplaySample>,
 }
 
+/// An overlay row: its label, and how to get its value from a frame.
+type Stage = (&'static str, fn(&FrameRecord) -> u64);
+
 impl Metrics {
     pub fn push_display(&mut self, s: DisplaySample) {
         while self.display.front().is_some_and(|d| s.at_us.saturating_sub(d.at_us) > WINDOW_US) {
@@ -162,7 +165,7 @@ impl Metrics {
         let mut s = String::new();
         let _ = writeln!(s, "{:.1} fps   presented {}   superseded {}", self.fps(), self.presented_total, self.superseded_total);
         let _ = writeln!(s, "stage (ms)        p50    p95");
-        let rows: [(&str, fn(&FrameRecord) -> u64); 7] = [
+        let rows: [Stage; 7] = [
             ("frame assembly", |f| f.rx_last - f.rx_first),
             ("rx -> decode", |f| f.dec_start.saturating_sub(f.rx_last)),
             ("decode", |f| f.dec_end - f.dec_start),

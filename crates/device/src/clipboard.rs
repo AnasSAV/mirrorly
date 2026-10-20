@@ -292,7 +292,7 @@ fn inline_text(reply: &plist::Value) -> Option<String> {
     items.iter().find_map(|item| {
         let data = item.as_dictionary()?.get("data")?.as_dictionary()?;
         ["public.utf8-plain-text", "public.plain-text", "public.text"].iter().find_map(|uti| {
-            let bytes = data.get(*uti)?.as_dictionary()?.get("data")?.as_data()?;
+            let bytes = data.get(uti)?.as_dictionary()?.get("data")?.as_data()?;
             String::from_utf8(bytes.to_vec()).ok().filter(|t| !t.is_empty())
         })
     })

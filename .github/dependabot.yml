@@ -1,0 +1,10 @@
+# Keep the GitHub Actions the workflows use up to date. (Cargo crates are
+# pinned on purpose: idevice, windows and ffmpeg-sys-next move with Apple's
+# protocols and FFmpeg's ABI, and are updated by hand, with testing on a
+# device.)
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

@@ -1,0 +1,21 @@
+name: Idea or request
+description: Something Mirrorly could do, or do better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like Mirrorly to do?
+      description: Describe what you are trying to get done, not only the feature. That helps find the best way to do it.
+    validations:
+      required: true
+  - type: textarea
+    id: now
+    attributes:
+      label: How do you do it today?
+      description: A workaround, another app, or not at all.
+  - type: input
+    id: device
+    attributes:
+      label: Your iPhone or iPad
+      placeholder: "iPad (10th generation), iPadOS 27"
