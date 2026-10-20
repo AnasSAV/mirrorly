@@ -16,6 +16,7 @@
   <a href="#get-started">Get started</a> ·
   <a href="#using-mirrorly">Using it</a> ·
   <a href="#drag-and-drop-files">Drag &amp; drop</a> ·
+  <a href="#screenshots-and-recordings">Record</a> ·
   <a href="#ipad-as-a-second-display">iPad display</a> ·
   <a href="#usb-and-wi-fi">USB &amp; Wi-Fi</a> ·
   <a href="#performance">Performance</a> ·
@@ -29,7 +30,8 @@
 it with your mouse and keyboard: tap, swipe, scroll, type, and move photos and
 files between the two by dragging them. It works over a USB cable or your
 Wi-Fi, needs no Mac, no jailbreak and no account, and adds only about **1 ms**
-of delay on the PC. An iPad can also be a **second monitor** for the PC.
+of delay on the PC. It takes screenshots and records the screen, and an iPad
+can also be a **second monitor** for the PC.
 
 > Everything stays between your PC and your iPhone. Nothing is uploaded, and
 > Mirrorly has no servers, accounts or telemetry.
@@ -72,11 +74,17 @@ of delay on the PC. An iPad can also be a **second monitor** for the PC.
     </td>
   </tr>
   <tr>
-    <td colspan="3" valign="top">
+    <td colspan="2" valign="top">
       <h3>🖥️ iPad as a second display</h3>
-      One click turns an iPad into an extra monitor for Windows: drag windows
-      onto it and use it with your mouse and keyboard, at the iPad's full
-      resolution and 60 fps, in Safari. Nothing to install on the iPad.
+      One click turns an iPad into an extra monitor for Windows: Mirrorly
+      opens it in Safari on the iPad by itself. Drag windows onto it and use
+      it with your mouse and keyboard, at the iPad's full resolution and
+      60 fps. Nothing to install on the iPad.
+    </td>
+    <td valign="top">
+      <h3>🎬 Screenshots &amp; recordings</h3>
+      <kbd>F6</kbd> saves a screenshot, <kbd>F7</kbd> records the screen: the
+      phone's own video, not re-encoded, so it costs nothing.
     </td>
   </tr>
 </table>
@@ -149,7 +157,7 @@ flowchart LR
 | **Drag up from the very bottom edge** | Go Home (pause before letting go for the App Switcher); works in landscape too |
 | **Drag down from the top edge** | Notification Center (left) or Control Center (right) |
 | **Right-click** | Go Home |
-| **Point at the window** | Show the bar: window buttons, copied files, Disconnect, Rotate, App Switcher, Home |
+| **Point at the window** | Show the bar: window buttons, copied files, Disconnect, Screenshot, Record, Rotate, App Switcher, Home |
 | **Drag the bar** | Move the window |
 | **Ctrl + wheel** or the **green button** | Make the window bigger or smaller |
 
@@ -165,6 +173,8 @@ Typing goes straight to the iPhone, like a Bluetooth keyboard.
 | <kbd>Ctrl</kbd> <kbd>3</kbd> | Spotlight search |
 | <kbd>F3</kbd> | Lock (side button) |
 | <kbd>F4</kbd> / <kbd>F5</kbd> | Volume down / up |
+| <kbd>F6</kbd> | Screenshot (Pictures › Mirrorly) |
+| <kbd>F7</kbd> | Start / stop recording (Videos › Mirrorly) |
 | <kbd>F11</kbd> | Fullscreen |
 | <kbd>F12</kbd> / <kbd>Shift</kbd> <kbd>F12</kbd> | Rotate the view for landscape apps |
 
@@ -259,10 +269,26 @@ in Mirrorly pastes the iPhone's copy.
 > suggestion above the keyboard reads *"Paste from dtpasteboardd"*: that is the
 > iOS service Mirrorly hands the copy to.
 
+## Screenshots and recordings
+
+| Press | Or on the bar | What you get |
+|---|---|---|
+| <kbd>F6</kbd> | the camera button | A PNG of the screen in **Pictures › Mirrorly**, at full resolution |
+| <kbd>F7</kbd> | the record button (a red stop button while recording) | An MP4 of the screen in **Videos › Mirrorly**; press again to finish |
+
+Both are turned the way you have the view turned (<kbd>F12</kbd>), and named
+by the time they were taken.
+
+A recording is the phone's own video stream, written to the file as it
+arrives: nothing is re-encoded, so it costs next to nothing, keeps the
+phone's quality, and doesn't slow the mirror down. The file is HEVC video in
+MP4, like the iPhone's own videos: Windows plays it with the HEVC Video
+Extensions. It has no sound, and ends by itself if the phone disconnects.
+
 ## iPad as a second display
 
 <p align="center">
-  <img src="docs/assets/display.svg" alt="The PC's desktop extends onto the iPad over Wi-Fi at 60 fps. Pipeline: a virtual monitor, Desktop Duplication with the mouse pointer, H.264 in hardware, a WebSocket that never queues, and Safari's hardware decoder on the iPad. About 7 ms on the PC." width="100%">
+  <img src="docs/assets/display.svg" alt="The PC's desktop extends onto the iPad over Wi-Fi at 60 fps. Pipeline: a virtual monitor, Desktop Duplication, H.264 in hardware straight from the GPU, a WebSocket that never queues, and Safari's hardware decoder on the iPad, which draws the pointer itself. About 12 ms on the PC." width="100%">
 </p>
 
 An iPad can be an extra monitor for your PC, like a second screen on your
@@ -273,18 +299,19 @@ desk: drag windows onto it, and use it with the PC's mouse and keyboard.
 2. **The first time**, Windows asks for administrator permission once:
    Mirrorly installs a virtual display driver and lets the iPad through the
    firewall.
-3. On the iPad, open **Safari** and go to the address Mirrorly shows, then tap
-   **Start**. Tip: *Share › Add to Home Screen* makes it one tap next time,
-   full screen.
+3. **Hands off the iPad:** Mirrorly opens Safari there, goes to the display's
+   address and puts it in full screen by itself, then stops mirroring.
 
-The iPad now shows a new monitor next to your others. Mirrorly stops
-mirroring the iPad and steps aside to its icon by the clock; click it and
-choose **Stop using iPad as a display** to switch back.
+The iPad now shows a new monitor next to your others, and Mirrorly steps
+aside to its icon by the clock; click it and choose **Stop using iPad as a
+display** to switch back. Later you can also open the address Mirrorly shows
+in Safari yourself (*Share › Add to Home Screen* makes it one tap).
 
 | | |
 |---|---|
 | Resolution | the iPad's own (2360 × 1640 on an iPad 10th gen), 60 fps |
-| Delay on the PC | about 7 ms from a screen change to the frame leaving (median) |
+| Delay on the PC | about 12 ms from a screen change to the frame leaving (median, Intel Quick Sync) |
+| The mouse pointer | drawn by the iPad itself: moving it needs no video, only a few bytes |
 | Where it sits | where you put it in *Settings › System › Display*; Mirrorly remembers |
 | When it's off | the virtual monitor is gone: windows can't get lost on it |
 
@@ -303,10 +330,15 @@ choose **Stop using iPad as a display** to switch back.
   the iPad is a display.
 - A **firewall rule**, *Mirrorly iPad display*, lets the iPad reach Mirrorly
   (port 8765, private and domain networks, Mirrorly only).
-- The screen is captured with Desktop Duplication, the pointer drawn in,
-  converted on the GPU and encoded as H.264 in hardware, and sent to Safari,
-  which decodes it in hardware (WebCodecs). If Wi-Fi falls behind, frames are
-  skipped rather than queued, so the delay never builds up.
+- The screen is captured with Desktop Duplication and never leaves the GPU:
+  it is converted there and encoded as H.264 by Intel Quick Sync straight
+  from GPU memory (other PCs encode from system memory), then sent to Safari,
+  which decodes it in hardware (WebCodecs). On a PC with Intel graphics the
+  virtual monitor runs on the Intel GPU for this. If Wi-Fi falls behind,
+  frames are skipped rather than queued, so the delay never builds up.
+- The pointer is not in the video: its shape and position go to the page as
+  tiny messages and Safari draws it, so moving the mouse costs nothing to
+  encode and shows after just the network's delay.
 - The address has a secret part (e.g. `…:8765/k7m2x9qa`), made once on your
   PC: without it the PC shows nothing, so others on your network can't watch.
   The picture itself is not encrypted on your network.
@@ -430,7 +462,7 @@ it's back on.
 <details>
 <summary><b>Is there sound?</b></summary>
 
-Not yet: Mirrorly shows the screen only.
+Not yet: Mirrorly shows the screen only, and recordings have no sound.
 </details>
 
 <details>
@@ -489,11 +521,11 @@ threads so input never waits on video:
 | Crate | Role |
 |---|---|
 | [`crates/device`](crates/device) | USB (usbmuxd, CoreDeviceProxy) and Wi-Fi (RemotePairing, Bonjour, TLS-PSK) transports into one tunnel; Developer Disk Image; media session and RTCP feedback; HID execution; clipboard file transfer; reconnect with USB preferred |
-| [`crates/video`](crates/video) | RTP/HEVC depacketizer; FFmpeg d3d11va decoding into textures on the app's D3D11 device |
+| [`crates/video`](crates/video) | RTP/HEVC depacketizer; FFmpeg d3d11va decoding into textures on the app's D3D11 device; MP4 writer for recordings |
 | [`crates/input`](crates/input) | Window → screen coordinate mapping, gestures (touch vs bottom-edge system gesture), key mapping |
-| [`crates/display`](crates/display) | iPad as a display: virtual monitor on/off, Desktop Duplication + pointer, GPU NV12 conversion, H.264 encoding (Quick Sync, NVENC, Media Foundation), HTTP/WebSocket server and the Safari page, one-time elevated setup |
+| [`crates/display`](crates/display) | iPad as a display: virtual monitor on/off, Desktop Duplication, GPU NV12 conversion, H.264 encoding (Quick Sync from GPU surfaces; NVENC, Media Foundation), HTTP/WebSocket server and the Safari page with its own pointer, one-time elevated setup |
 | [`crates/app`](crates/app) | Window and chrome (Direct2D), swapchain, zero-copy NV12 render, drag and drop |
-| [`spike/`](spike), [`spike-decode/`](spike-decode) | Measurement and protocol probes (`s0`–`s9`) |
+| [`spike/`](spike), [`spike-decode/`](spike-decode) | Measurement and protocol probes (`s0`–`s10`) |
 
 Design notes: [FEASIBILITY.md](FEASIBILITY.md) (what the iPhone offers, and
 how it was verified) and [LATENCY.md](LATENCY.md) (method and results).
@@ -542,7 +574,8 @@ powershell -ExecutionPolicy Bypass -File packaging\build-release.ps1   # -> dist
 | `--rctl pmd3\|idevice\|off` | RTCP rate-control report layout |
 
 Environment: `MIRROR_TOUCH=uhs|indigo`, `MIRROR_NAGLE=1`,
-`MIRROR_DXGI_TRACE=1`, `MIRROR_SQUARE=1`. <kbd>F9</kbd> runs a latency probe:
+`MIRROR_DXGI_TRACE=1`, `MIRROR_SQUARE=1`, `MIRROR_DISPLAY_SYSMEM=1` (iPad
+display: encode from system memory, for comparison). <kbd>F9</kbd> runs a latency probe:
 10 timed taps where the mouse points.
 
 </details>

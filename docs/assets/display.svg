@@ -69,13 +69,13 @@
       <rect width="164" height="78" rx="14" fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
       <text x="16" y="28" font-size="11" font-weight="700" letter-spacing="1.1" fill="#7C8BC9">2 · CAPTURE</text>
       <text x="16" y="50" font-weight="600" fill="#fff">Desktop Duplication</text>
-      <text x="16" y="68" fill="#A3ADD6">+ the mouse pointer</text>
+      <text x="16" y="68" fill="#A3ADD6">stays on the GPU</text>
     </g>
     <g transform="translate(400 346)">
       <rect width="164" height="78" rx="14" fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
       <text x="16" y="28" font-size="11" font-weight="700" letter-spacing="1.1" fill="#7C8BC9">3 · ENCODE</text>
       <text x="16" y="50" font-weight="600" fill="#fff">H.264 in hardware</text>
-      <text x="16" y="68" fill="#A3ADD6">GPU convert, Quick Sync</text>
+      <text x="16" y="68" fill="#A3ADD6">Quick Sync, zero-copy</text>
     </g>
     <g transform="translate(584 346)">
       <rect width="164" height="78" rx="14" fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
@@ -87,12 +87,12 @@
       <rect width="160" height="78" rx="14" fill="#4C61FA" fill-opacity="0.16" stroke="#6F83FF" stroke-opacity="0.6"/>
       <text x="16" y="28" font-size="11" font-weight="700" letter-spacing="1.1" fill="#9DB0FF">5 · IPAD</text>
       <text x="16" y="50" font-weight="600" fill="#fff">Safari WebCodecs</text>
-      <text x="16" y="68" fill="#C3CCF5">hardware decode</text>
+      <text x="16" y="68" fill="#C3CCF5">decode, draws pointer</text>
     </g>
   </g>
   <path d="M198 385 H212" stroke="#8FA2E8" stroke-width="2" marker-end="url(#arrow)"/>
   <path d="M382 385 H396" stroke="#8FA2E8" stroke-width="2" marker-end="url(#arrow)"/>
   <path d="M566 385 H580" stroke="#8FA2E8" stroke-width="2" marker-end="url(#arrow)"/>
   <path d="M750 385 H764" stroke="#8FA2E8" stroke-width="2" marker-end="url(#arrow)"/>
-  <text x="480" y="328" text-anchor="middle" font-size="12.5" fill="#7C8BC9">About 7 ms on the PC from a screen change to the frame on its way (median, 2360 × 1640)</text>
+  <text x="480" y="328" text-anchor="middle" font-size="12.5" fill="#7C8BC9">About 12 ms on the PC from a screen change to the frame on its way (median, 2360 × 1640) · the pointer needs no frame</text>
 </svg>
