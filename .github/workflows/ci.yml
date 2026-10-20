@@ -30,7 +30,7 @@ jobs:
     name: Build, lint and test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: MSVC environment (headers for bindgen)
         uses: ilammy/msvc-dev-cmd@v1
