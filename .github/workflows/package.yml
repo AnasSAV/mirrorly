@@ -29,6 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Puts Microsoft's link.exe and the MSVC headers first (the runner's
+      # Git also has a link.exe); build-release.ps1 sees it and uses it.
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Rust (stable)
         shell: pwsh
         run: |
