@@ -15,8 +15,14 @@ $version = (Select-String -Path crates\app\Cargo.toml -Pattern '^version = "(.+)
 Write-Host "Mirrorly $version"
 
 # 1. Release build inside the MSVC environment (bindgen needs its headers).
-$vcvars = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\2022\*\VC\Auxiliary\Build\vcvars64.bat" | Select-Object -First 1 -ExpandProperty FullName
-if (-not $vcvars) { throw "VS 2022 Build Tools (vcvars64.bat) not found" }
+# Any Visual Studio (or Build Tools) with the C++ tools: ask vswhere, which
+# knows every installed version (CI machines carry newer ones than 2022).
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$vcvars = if (Test-Path $vswhere) {
+    & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find "VC\Auxiliary\Build\vcvars64.bat" | Select-Object -First 1
+}
+if (-not $vcvars) { $vcvars = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Auxiliary\Build\vcvars64.bat" | Select-Object -First 1 -ExpandProperty FullName }
+if (-not $vcvars) { throw "Visual Studio C++ build tools (vcvars64.bat) not found" }
 cmd /c "set PATH=C:\Program Files (x86)\Microsoft Visual Studio\Installer;%PATH% && `"$vcvars`" >nul && set PATH=%USERPROFILE%\.cargo\bin;%PATH% && cargo build --release -p app"
 if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 
