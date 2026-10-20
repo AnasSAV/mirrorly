@@ -148,6 +148,12 @@ impl DeviceHandle {
         let _ = self.clip_tx.send(ClipCmd::Push(content, paste));
     }
 
+    /// Open a web address in Safari on the device (the answer comes as
+    /// `ClipEvent::UrlOpened`). Ignored while disconnected.
+    pub fn open_url(&self, url: String) {
+        let _ = self.clip_tx.send(ClipCmd::OpenUrl(url));
+    }
+
     /// A cloneable sender for other threads (e.g. a latency probe).
     pub fn sender(&self) -> InputSender {
         InputSender(self.hid_tx.clone())

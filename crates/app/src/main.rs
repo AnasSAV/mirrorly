@@ -178,6 +178,23 @@ const BEZEL: f64 = 6.0;
 const BAR_LINGER: Duration = Duration::from_millis(600);
 /// While the display page shows, how often to check for the iPad.
 const DISPLAY_POLL: Duration = Duration::from_millis(300);
+/// Opening the display on the iPad by itself: give up after this, and
+/// leave it to the user.
+const OPEN_TIMEOUT: Duration = Duration::from_secs(25);
+/// The tap that gives the page full screen: held this long, then mirroring
+/// stops this long after it.
+const TAP_HOLD: Duration = Duration::from_millis(80);
+const TAP_SETTLE: Duration = Duration::from_millis(700);
+
+/// Mirrorly opening the display page on the iPad itself, while it still
+/// mirrors (and so can type and tap there).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Opening {
+    /// Safari is being brought up and the address typed, since then.
+    Typing(Instant),
+    /// The page connected; tapped at that moment (released yet?).
+    Tapped(Instant, bool),
+}
 /// One wheel notch moves the finger this far (fraction of the screen height).
 const SCROLL_PER_NOTCH: f64 = 0.12;
 /// A wheel scroll gesture lasts about this long; notches arriving meanwhile
@@ -232,6 +249,8 @@ struct App {
     display_hidden: bool,
     /// The one-time display setup is running (administrator prompt).
     display_setup: bool,
+    /// Opening the page on the iPad, before mirroring stops.
+    opening: Option<Opening>,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
@@ -584,10 +603,59 @@ impl App {
         }
         self.display = Some(session);
         self.display_hidden = false;
-        self.set_connected(false);
+        // While the iPad is still connected, Mirrorly opens the page there
+        // itself; mirroring stops once it shows. Otherwise it's up to the
+        // user (the window says where to go).
+        match self.device.as_ref().filter(|_| self.link.is_some()) {
+            Some(d) => {
+                d.open_url(format!("{url}#auto"));
+                self.opening = Some(Opening::Typing(Instant::now()));
+                self.toast("Opening it in Safari on your iPad…", 30.0);
+            }
+            None => self.set_connected(false),
+        }
         self.shared.chrome.lock().unwrap().display = Some(url);
         self.set_bar(false);
         self.slot.request_redraw();
+    }
+
+    /// Done opening the page on the iPad (or giving up): stop mirroring it.
+    fn opened(&mut self, ok: bool) {
+        if self.opening.take().is_none() {
+            return;
+        }
+        if ok {
+            self.toast_until = Some(Instant::now());
+        } else {
+            self.toast("Open the address below in Safari on your iPad", 6.0);
+        }
+        self.release_all();
+        self.set_connected(false);
+    }
+
+    /// Opening the page on the iPad: once it connects, tap it once (full
+    /// screen and the wake lock need a tap), then stop mirroring.
+    fn advance_opening(&mut self) {
+        let Some(opening) = self.opening else { return };
+        let viewers = self.display.as_ref().map_or(0, |d| d.viewers());
+        let center = input::geom::to_u16(0.5);
+        match opening {
+            Opening::Typing(since) if viewers > 0 => {
+                tracing::info!("iPad display: the page is up after {} ms; tapping for full screen", since.elapsed().as_millis());
+                self.send(HidEvent::Touch { x: center, y: center });
+                self.opening = Some(Opening::Tapped(Instant::now(), false));
+            }
+            Opening::Typing(since) if since.elapsed() > OPEN_TIMEOUT => {
+                tracing::warn!("iPad display: the page did not connect; leaving it to the user");
+                self.opened(false);
+            }
+            Opening::Tapped(at, false) if at.elapsed() >= TAP_HOLD => {
+                self.send(HidEvent::Release { x: center, y: center });
+                self.opening = Some(Opening::Tapped(at, true));
+            }
+            Opening::Tapped(at, true) if at.elapsed() >= TAP_SETTLE => self.opened(true),
+            _ => {}
+        }
     }
 
     /// Back to mirroring: the display stops, the window returns.
@@ -595,6 +663,7 @@ impl App {
         if self.display.take().is_none() {
             return;
         }
+        self.opening = None;
         tracing::info!("iPad display stopped");
         self.tray = None;
         self.shared.chrome.lock().unwrap().display = None;
@@ -772,6 +841,11 @@ impl App {
                     _ => "On the iPhone's clipboard: touch and hold, then Paste".into(),
                 };
                 self.toast(text, if saved > 0 { 6.0 } else { 3.0 });
+            }
+            ClipEvent::UrlOpened(Ok(())) => tracing::info!("iPad display: the address is in Safari"),
+            ClipEvent::UrlOpened(Err(e)) => {
+                tracing::warn!("iPad display: opening Safari failed: {e}");
+                self.opened(false);
             }
             ClipEvent::Failed(why) => {
                 let w = why.to_ascii_lowercase();
@@ -1039,8 +1113,13 @@ impl ApplicationHandler<UserEvent> for App {
         let animating = self.bar.as_mut().is_some_and(|b| b.tick());
         let frame = animating.then(|| now + Duration::from_millis(8));
         // The display page waits for the iPad to show up.
+        self.advance_opening();
         self.check_display();
-        let display_poll = (self.display.is_some() && !self.display_hidden).then(|| now + DISPLAY_POLL);
+        let display_poll = match self.opening {
+            // The tap's timing needs a closer look.
+            Some(Opening::Tapped(..)) => Some(now + Duration::from_millis(10)),
+            _ => (self.display.is_some() && (!self.display_hidden || self.opening.is_some())).then(|| now + DISPLAY_POLL),
+        };
         el.set_control_flow(match [self.hide_bar_at, self.toast_until, frame, display_poll].into_iter().flatten().min() {
             Some(t) => ControlFlow::WaitUntil(t),
             None => ControlFlow::Wait,
@@ -1580,6 +1659,7 @@ fn main() -> Result<()> {
         tray: None,
         display_hidden: false,
         display_setup: false,
+        opening: None,
         threads: Vec::new(),
     };
     event_loop.run_app(&mut app)?;

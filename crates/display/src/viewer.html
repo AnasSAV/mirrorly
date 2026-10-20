@@ -167,8 +167,18 @@ async function stayAwake() {
 }
 document.addEventListener('visibilitychange', stayAwake);
 
-// A tap anywhere shows or hides the stats.
+// Full screen and the wake lock need a tap. The first tap (Start, or on
+// the picture when Mirrorly opened the page itself) asks for both; later
+// taps show or hide the stats.
+let fullAsked = false;
+async function goFull() {
+  fullAsked = true;
+  const el = document.documentElement;
+  try { await (el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen && el.webkitRequestFullscreen()); } catch (e) {}
+  stayAwake();
+}
 canvas.addEventListener('click', () => {
+  if (!fullAsked) { goFull(); if (hud.textContent.startsWith('Tap')) hud.textContent = ''; return; }
   hud.dataset.off = hud.dataset.off ? '' : '1';
   hud.hidden = !!hud.dataset.off;
 });
@@ -183,14 +193,21 @@ setInterval(() => {
   stats.frames = 0; stats.bytes = 0; stats.decode = []; stats.since = now;
 }, 1000);
 
-document.getElementById('go').addEventListener('click', async () => {
-  if (!('VideoDecoder' in window)) { document.getElementById('note').textContent = 'This Safari can’t decode video here (needs iPadOS 16.4 or later).'; return; }
+function begin() {
+  if (!('VideoDecoder' in window)) { document.getElementById('note').textContent = 'This Safari can’t decode video here (needs iPadOS 16.4 or later).'; return false; }
   cover.remove();
-  const el = document.documentElement;
-  try { await (el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen && el.webkitRequestFullscreen()); } catch (e) {}
-  stayAwake();
   connect();
-});
+  return true;
+}
+document.getElementById('go').addEventListener('click', () => { if (begin()) goFull(); });
+// Opened by Mirrorly (the address ends in #auto): start at once; Mirrorly
+// then taps the picture once for full screen. When the page was already
+// open at this address, only the #auto is new and Safari doesn't reload.
+function autoStart() {
+  if (location.hash === '#auto' && cover.isConnected && begin()) show('Tap for full screen');
+}
+autoStart();
+window.addEventListener('hashchange', autoStart);
 </script>
 </body>
 </html>

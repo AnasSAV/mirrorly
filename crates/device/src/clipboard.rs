@@ -42,6 +42,7 @@ use std::{
 use anyhow::{Context, Result, anyhow, bail};
 use idevice::{
     IdeviceError, ReadWrite, RsdService,
+    core_device::AppServiceClient,
     rsd::RsdHandshake,
     tcp::handle::AdapterHandle,
     xpc::{Dictionary, RemoteXpcClient, XPCObject},
@@ -97,6 +98,9 @@ pub enum ClipEvent {
     /// when Command-V followed.
     Pushed { pasted: bool },
     Failed(String),
+    /// The address was typed into Safari on the device (Ok), or that
+    /// failed (the user has to open it).
+    UrlOpened(Result<(), String>),
 }
 
 /// Windows clipboard content for the iPhone's clipboard.
@@ -113,7 +117,12 @@ pub enum ClipCmd {
     /// Put this on the phone's clipboard; then press V if `paste` (the
     /// user is holding Ctrl, which the phone already has as Command).
     Push(PushContent, bool),
+    /// Open this web address in Safari on the device.
+    OpenUrl(String),
 }
+
+/// Safari's bundle identifier.
+const SAFARI: &str = "com.apple.mobilesafari";
 
 /// The pasteboard types a pushed item is offered under (as iOS's own
 /// copies of text do).
@@ -139,6 +148,20 @@ impl RsdService for Pasteboard {
         let mut c = RemoteXpcClient::new(stream).await?;
         c.do_handshake().await?;
         Ok(Self(c))
+    }
+}
+
+/// CoreDevice's app service, to bring an app up. (Through this wrapper, as
+/// with `Pasteboard`: connecting idevice's generic client directly here
+/// trips a "not general enough" error in the spawned bridge task.)
+struct Apps(AppServiceClient<Box<dyn ReadWrite>>);
+
+impl RsdService for Apps {
+    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
+        "com.apple.coredevice.appservice".into()
+    }
+    async fn from_stream(stream: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
+        Ok(Self(AppServiceClient::new(stream).await?))
     }
 }
 
@@ -494,6 +517,13 @@ impl Bridge {
                             (self.on_event)(ClipEvent::Failed(format!("{e:#}")));
                         }
                     }
+                    ClipCmd::OpenUrl(url) => {
+                        let r = self.open_url(&url).await.map_err(|e| format!("{e:#}"));
+                        if let Err(e) = &r {
+                            tracing::warn!("opening {url} in Safari failed: {e}");
+                        }
+                        (self.on_event)(ClipEvent::UrlOpened(r));
+                    }
                 },
                 _ = tick.tick() => {
                     if let Err(e) = self.check().await {
@@ -640,6 +670,39 @@ impl Bridge {
             }
         }
         (self.on_event)(ClipEvent::Pushed { pasted: paste });
+        Ok(())
+    }
+
+    /// Press these keys, in order, as from a hardware keyboard.
+    fn keys(&self, keys: &[(u16, bool)]) {
+        let t = (self.now_us)();
+        for &(usage, down) in keys {
+            let _ = self.hid.send((t, HidEvent::Key { usage, down }));
+        }
+    }
+
+    /// Open `url` in Safari: the address goes on the clipboard, Safari is
+    /// brought up (CoreDevice app service), and Command-L, Command-V,
+    /// Return go to its address bar. Pasting rather than typing keeps
+    /// keyboard layouts out of it.
+    async fn open_url(&mut self, url: &str) -> Result<()> {
+        let items = vec![push_types(PushContent::Text(url.to_string()))];
+        let change = self.with(Duration::from_secs(10), async |c| c.set(items).await).await?;
+        self.seen = Some(change);
+        let mut apps = Apps::connect_rsd(&mut self.adapter, &mut self.handshake).await.context("app service")?;
+        tokio::time::timeout(Duration::from_secs(10), apps.0.launch_application(SAFARI, &[], false, false, None, None, None))
+            .await
+            .context("Safari did not start in time")?
+            .context("start Safari")?;
+        // Safari has to be in front and ready for keys.
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        const GUI: u16 = 0xE3;
+        self.keys(&[(GUI, true), (0x0F, true), (0x0F, false), (GUI, false)]); // Command-L
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        self.keys(&[(GUI, true), (0x19, true), (0x19, false), (GUI, false)]); // Command-V
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        self.keys(&[(0x28, true), (0x28, false)]); // Return
+        tracing::info!("opened {url} in Safari");
         Ok(())
     }
 }
