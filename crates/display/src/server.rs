@@ -1,18 +1,20 @@
 //! The iPad side is a web page in Safari: this serves it, streams H.264 to
-//! it over a WebSocket (one access unit per binary message). The page sends
-//! "k" for a keyframe (after a decoder reset) and log lines.
+//! it over a WebSocket (one access unit per binary message) and the mouse
+//! pointer as small text messages (see `cursor`). The page sends "k" for a
+//! keyframe (after a decoder reset) and log lines.
 //!
-//! Latency first: each viewer has a short queue. When Wi-Fi can't keep up,
-//! frames are skipped until the next keyframe (which is requested) instead
-//! of queueing, so delay never builds up.
+//! Latency first: each viewer may have only a few frames queued. When
+//! Wi-Fi can't keep up, frames are skipped until the next keyframe (which
+//! is requested) instead of queueing, so delay never builds up. Pointer
+//! messages are tiny and always go.
 
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering::Relaxed},
-        mpsc::{Receiver, SyncSender, TrySendError, sync_channel},
+        atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
+        mpsc::{Receiver, Sender, channel},
     },
     thread,
 };
@@ -24,17 +26,34 @@ const QUEUE: usize = 3;
 
 const PAGE: &str = include_str!("viewer.html");
 
+/// What goes out to a viewer, already framed.
+enum Out {
+    Frame(Arc<Vec<u8>>),
+    Pointer(Arc<Vec<u8>>),
+}
+
 struct Viewer {
-    tx: SyncSender<Arc<Vec<u8>>>,
+    tx: Sender<Out>,
+    /// Frames handed over but not yet written to the socket.
+    queued: Arc<AtomicUsize>,
     /// To hang up when the display stops.
     conn: TcpStream,
     /// Behind: skip frames until a keyframe.
     waiting_key: bool,
 }
 
+/// The pointer as last sent: shape and position messages, for viewers
+/// that join later.
+#[derive(Default)]
+struct PointerState {
+    shape: Option<Arc<Vec<u8>>>,
+    position: Option<Arc<Vec<u8>>>,
+}
+
 #[derive(Clone)]
 pub struct Hub {
     viewers: Arc<Mutex<Vec<Viewer>>>,
+    pointer: Arc<Mutex<PointerState>>,
     /// Set when a viewer needs a keyframe (joined, fell behind, asked).
     pub want_key: Arc<AtomicBool>,
 }
@@ -63,19 +82,33 @@ impl Hub {
             if v.waiting_key && !keyframe {
                 return true;
             }
-            match v.tx.try_send(msg.clone()) {
-                Ok(()) => {
-                    v.waiting_key = false;
-                    true
-                }
-                Err(TrySendError::Full(_)) => {
-                    v.waiting_key = true;
-                    self.want_key.store(true, Relaxed);
-                    true
-                }
-                Err(TrySendError::Disconnected(_)) => false,
+            if v.queued.load(Relaxed) >= QUEUE {
+                v.waiting_key = true;
+                self.want_key.store(true, Relaxed);
+                return true;
             }
+            v.queued.fetch_add(1, Relaxed);
+            v.waiting_key = false;
+            v.tx.send(Out::Frame(msg.clone())).is_ok()
         });
+    }
+
+    /// A new pointer shape (`cursor::shape_message`).
+    pub fn pointer_shape(&self, text: &str) {
+        let msg = Arc::new(ws_frame(0x1, text.as_bytes()));
+        self.pointer.lock().unwrap().shape = Some(msg.clone());
+        self.send_pointer(msg);
+    }
+
+    /// The pointer's new position (`cursor::position_message`).
+    pub fn pointer_position(&self, text: &str) {
+        let msg = Arc::new(ws_frame(0x1, text.as_bytes()));
+        self.pointer.lock().unwrap().position = Some(msg.clone());
+        self.send_pointer(msg);
+    }
+
+    fn send_pointer(&self, msg: Arc<Vec<u8>>) {
+        self.viewers.lock().unwrap().retain(|v| v.tx.send(Out::Pointer(msg.clone())).is_ok());
     }
 }
 
@@ -106,7 +139,7 @@ fn accept_key(key: &str) -> String {
     base64(digest.as_ref())
 }
 
-fn base64(data: &[u8]) -> String {
+pub(crate) fn base64(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut s = String::new();
     for c in data.chunks(3) {
@@ -174,7 +207,7 @@ pub fn start(port: u16, stop: Arc<AtomicBool>) -> Result<Hub> {
     let key = Arc::new(key());
     let listener = TcpListener::bind(("0.0.0.0", port)).with_context(|| format!("listen on port {port}"))?;
     listener.set_nonblocking(true)?;
-    let hub = Hub { viewers: Arc::default(), want_key: Arc::new(AtomicBool::new(false)) };
+    let hub = Hub { viewers: Arc::default(), pointer: Arc::default(), want_key: Arc::new(AtomicBool::new(false)) };
     let h = hub.clone();
     thread::Builder::new().name("display-server".into()).spawn(move || {
         while !stop.load(Relaxed) {
@@ -241,8 +274,16 @@ const NOT_FOUND: &str = "<!doctype html><meta name=viewport content=\"width=devi
 <p style=\"font:17px -apple-system,sans-serif;padding:24px\">Open the full address that Mirrorly shows on the PC.</p>";
 
 fn viewer(conn: TcpStream, hub: &Hub) -> Result<()> {
-    let (tx, rx): (SyncSender<Arc<Vec<u8>>>, Receiver<Arc<Vec<u8>>>) = sync_channel(QUEUE);
-    hub.viewers.lock().unwrap().push(Viewer { tx, conn: conn.try_clone()?, waiting_key: true });
+    let (tx, rx): (Sender<Out>, Receiver<Out>) = channel();
+    // The pointer as it is now, before any frame.
+    {
+        let p = hub.pointer.lock().unwrap();
+        for msg in [&p.shape, &p.position].into_iter().flatten() {
+            let _ = tx.send(Out::Pointer(msg.clone()));
+        }
+    }
+    let queued = Arc::new(AtomicUsize::new(0));
+    hub.viewers.lock().unwrap().push(Viewer { tx, queued: queued.clone(), conn: conn.try_clone()?, waiting_key: true });
     hub.want_key.store(true, Relaxed);
     tracing::info!("iPad viewer connected ({})", conn.peer_addr().map(|a| a.to_string()).unwrap_or_default());
 
@@ -250,8 +291,15 @@ fn viewer(conn: TcpStream, hub: &Hub) -> Result<()> {
     let mut out = conn.try_clone()?;
     let writer = thread::Builder::new().name("display-send".into()).spawn(move || {
         while let Ok(msg) = rx.recv() {
-            if out.write_all(&msg).is_err() {
+            let (bytes, frame) = match &msg {
+                Out::Frame(b) => (b, true),
+                Out::Pointer(b) => (b, false),
+            };
+            if out.write_all(bytes).is_err() {
                 return;
+            }
+            if frame {
+                queued.fetch_sub(1, Relaxed);
             }
         }
     })?;

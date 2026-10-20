@@ -1,7 +1,7 @@
-//! The mouse pointer, drawn into the picture. Desktop Duplication leaves it
-//! out of the screen image and hands it over separately (its shape when
-//! that changes, its position when it moves); a monitor used with the mouse
-//! needs it drawn.
+//! The mouse pointer. Desktop Duplication leaves it out of the screen image
+//! and hands it over separately (its shape when that changes, its position
+//! when it moves); it goes to the iPad the same way, as small messages,
+//! and the page draws it over the video.
 
 /// One pointer pixel.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,81 +72,37 @@ impl Shape {
     }
 }
 
-/// BT.709, video range (what the capture converts to).
-fn yuv(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
-    let (r, g, b) = (r as i32, g as i32, b as i32);
-    let y = 16 + (47 * r + 157 * g + 16 * b + 128) / 256;
-    // (Rounded so that greys come out exactly neutral.)
-    let u = 128 + (-26 * r - 86 * g + 112 * b + 128).div_euclid(256);
-    let v = 128 + (112 * r - 102 * g - 10 * b + 128).div_euclid(256);
-    (y.clamp(16, 235) as u8, u.clamp(16, 240) as u8, v.clamp(16, 240) as u8)
-}
-
-fn mix(under: u8, over: u8, a: u32) -> u8 {
-    ((under as u32 * (255 - a) + over as u32 * a + 127) / 255) as u8
-}
-
-/// Draw `shape` with its top-left corner at (x0, y0) into a tightly packed
-/// NV12 picture of `w` x `h`.
-pub fn draw(nv12: &mut [u8], w: usize, h: usize, shape: &Shape, x0: i32, y0: i32) {
-    let (luma, chroma) = nv12.split_at_mut(w * h);
-    let at = |sx: i32, sy: i32| -> Px {
-        if sx < 0 || sy < 0 || sx >= shape.width as i32 || sy >= shape.height as i32 {
-            Px::Clear
-        } else {
-            shape.px[sy as usize * shape.width + sx as usize]
-        }
-    };
-    let (xs, ys) = (x0.max(0)..(x0 + shape.width as i32).min(w as i32), y0.max(0)..(y0 + shape.height as i32).min(h as i32));
-    for y in ys.clone() {
-        for x in xs.clone() {
-            let d = &mut luma[y as usize * w + x as usize];
-            match at(x - x0, y - y0) {
-                Px::Clear => {}
-                Px::Invert => *d = 251 - (*d).clamp(16, 235),
-                Px::Paint { r, g, b, a } => *d = mix(*d, yuv(r, g, b).0, a as u32),
-            }
+/// The shape for the page: `s <width> <height> <paint> <invert>`, each
+/// layer RGBA (straight alpha) in base64, or `-` when empty. Inverting
+/// pixels are white in their layer (the page blends it as a difference).
+/// `s 0 0 - -`: no pointer image.
+pub fn shape_message(shape: Option<&Shape>) -> String {
+    let Some(shape) = shape.filter(|s| s.width > 0 && s.height > 0) else { return "s 0 0 - -".into() };
+    let mut paint = vec![0u8; shape.px.len() * 4];
+    let mut invert = vec![0u8; shape.px.len() * 4];
+    for (i, px) in shape.px.iter().enumerate() {
+        match *px {
+            Px::Clear => {}
+            Px::Paint { r, g, b, a } => paint[i * 4..i * 4 + 4].copy_from_slice(&[r, g, b, a]),
+            Px::Invert => invert[i * 4..i * 4 + 4].copy_from_slice(&[255; 4]),
         }
     }
-    // Chroma is per 2x2 block: blend in the block's average colour by its
-    // average coverage. Inverted pixels count as grey.
-    for by in ys.start / 2..(ys.end + 1) / 2 {
-        for bx in xs.start / 2..(xs.end + 1) / 2 {
-            let (mut cover, mut u, mut v) = (0u32, 0u32, 0u32);
-            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                let (c, cu, cv) = match at(bx * 2 + dx - x0, by * 2 + dy - y0) {
-                    Px::Clear => continue,
-                    Px::Invert => (255, 128, 128),
-                    Px::Paint { r, g, b, a } => {
-                        let (_, cu, cv) = yuv(r, g, b);
-                        (a as u32, cu as u32, cv as u32)
-                    }
-                };
-                cover += c;
-                u += cu * c;
-                v += cv * c;
-            }
-            if cover == 0 {
-                continue;
-            }
-            let i = by as usize * w + bx as usize * 2;
-            if i + 1 < chroma.len() {
-                chroma[i] = mix(chroma[i], (u / cover) as u8, cover / 4);
-                chroma[i + 1] = mix(chroma[i + 1], (v / cover) as u8, cover / 4);
-            }
-        }
+    let layer = |l: &[u8]| if l.chunks(4).all(|p| p[3] == 0) { "-".to_string() } else { crate::server::base64(l) };
+    format!("s {} {} {} {}", shape.width, shape.height, layer(&paint), layer(&invert))
+}
+
+/// Where the pointer image's top-left is on the picture: `p <x> <y>`, or
+/// `p -` when the pointer isn't on this monitor.
+pub fn position_message(at: Option<(i32, i32)>) -> String {
+    match at {
+        Some((x, y)) => format!("p {x} {y}"),
+        None => "p -".into(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn colours() {
-        assert_eq!(yuv(255, 255, 255), (235, 128, 128));
-        assert_eq!(yuv(0, 0, 0), (16, 128, 128));
-    }
 
     #[test]
     fn monochrome_masks() {
@@ -158,24 +114,24 @@ mod tests {
     }
 
     #[test]
+    fn messages_for_the_page() {
+        let s = Shape { width: 2, height: 1, px: vec![Px::Paint { r: 1, g: 2, b: 3, a: 4 }, Px::Invert] };
+        let m = shape_message(Some(&s));
+        let parts: Vec<&str> = m.split(' ').collect();
+        assert_eq!(&parts[..3], &["s", "2", "1"]);
+        assert_eq!(parts[3], crate::server::base64(&[1, 2, 3, 4, 0, 0, 0, 0]));
+        assert_eq!(parts[4], crate::server::base64(&[0, 0, 0, 0, 255, 255, 255, 255]));
+        let only_paint = Shape { width: 1, height: 1, px: vec![BLACK] };
+        assert!(shape_message(Some(&only_paint)).ends_with(" -"), "empty invert layer");
+        assert_eq!(shape_message(None), "s 0 0 - -");
+        assert_eq!(position_message(Some((-3, 40))), "p -3 40");
+        assert_eq!(position_message(None), "p -");
+    }
+
+    #[test]
     fn masked_colour() {
         let buf = [9, 9, 9, 0, 0, 0, 0, 255, 255, 255, 255, 255];
         let s = Shape::decode(MASKED_COLOR, 3, 1, 12, &buf).unwrap();
         assert_eq!(s.px, vec![Px::Paint { r: 9, g: 9, b: 9, a: 255 }, Px::Clear, Px::Invert]);
-    }
-
-    #[test]
-    fn drawn_into_nv12_and_clipped() {
-        let (w, h) = (4, 4);
-        let mut pic = vec![16u8; w * h];
-        pic.extend(vec![128u8; w * h / 2]);
-        let shape = Shape { width: 2, height: 2, px: vec![WHITE, Px::Clear, Px::Invert, WHITE] };
-        // Partly off the bottom-right corner: only its top-left pixel lands.
-        draw(&mut pic, w, h, &shape, 3, 3);
-        assert_eq!(pic[3 * w + 3], 235);
-        assert_eq!(pic.iter().take(w * h).filter(|&&y| y != 16).count(), 1);
-        draw(&mut pic, w, h, &shape, 0, 0);
-        assert_eq!((pic[0], pic[1], pic[w], pic[w + 1]), (235, 16, 235, 235));
-        assert_eq!(&pic[w * h..w * h + 2], &[128, 128], "white and grey keep chroma neutral");
     }
 }

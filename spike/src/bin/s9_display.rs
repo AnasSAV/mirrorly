@@ -97,7 +97,7 @@ fn main() -> Result<()> {
         let _ = windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext(windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
     match args.cmd {
-        Cmd::On => println!("{:?}", display::screen::attach(None)?),
+        Cmd::On => println!("{:?}", display::screen::attach(None)?.0),
         Cmd::Off => display::monitor_off()?,
         Cmd::Serve { seconds } => {
             let session = display::DisplaySession::start(None)?;

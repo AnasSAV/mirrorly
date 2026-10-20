@@ -4,7 +4,10 @@
 //!
 //! - the Virtual Display Driver (MIT, signed by SignPath; bundled in a
 //!   `vdd` folder next to Mirrorly.exe), with settings for one monitor at
-//!   iPad resolutions;
+//!   iPad resolutions, rendered on the Intel GPU when there is one: Quick
+//!   Sync can then encode the monitor's picture where it is drawn (on a
+//!   hybrid laptop the driver's "default" is the NVIDIA GPU, which Quick
+//!   Sync can't read);
 //! - an inbound firewall rule for Mirrorly's display server, so the iPad
 //!   can reach it (private and domain networks, this program only).
 //!
@@ -23,10 +26,13 @@ use anyhow::{Context, Result, bail};
 use windows::{
     Win32::{
         Devices::DeviceAndDriverInstallation::{
-            DICD_GENERATE_ID, DIF_REGISTERDEVICE, GUID_DEVCLASS_DISPLAY, INSTALLFLAG_FORCE, SP_DEVINFO_DATA,
+            DICD_GENERATE_ID, DICS_FLAG_CONFIGSPECIFIC, DICS_PROPCHANGE, DIF_PROPERTYCHANGE, DIF_REGISTERDEVICE, DIGCF_PRESENT,
+            GUID_DEVCLASS_DISPLAY, INSTALLFLAG_FORCE, SP_CLASSINSTALL_HEADER, SP_DEVINFO_DATA, SP_PROPCHANGE_PARAMS,
             SPDRP_HARDWAREID, SetupDiCallClassInstaller, SetupDiCreateDeviceInfoList, SetupDiCreateDeviceInfoW,
-            SetupDiDestroyDeviceInfoList, SetupDiSetDeviceRegistryPropertyW, UpdateDriverForPlugAndPlayDevicesW,
+            SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, SetupDiGetDeviceRegistryPropertyW,
+            SetupDiSetClassInstallParamsW, SetupDiSetDeviceRegistryPropertyW, UpdateDriverForPlugAndPlayDevicesW,
         },
+        Graphics::Dxgi::{CreateDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE, IDXGIFactory1},
         Foundation::{CloseHandle, ERROR_CANCELLED, WAIT_OBJECT_0},
         System::Threading::{GetExitCodeProcess, INFINITE, WaitForSingleObject},
         UI::{
@@ -62,9 +68,40 @@ fn this_exe() -> String {
     std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()
 }
 
-/// Whether "Use as display" needs the setup first.
+/// Whether "Use as display" needs the setup first: no driver, a firewall
+/// rule for another copy of Mirrorly, or the driver on the wrong GPU.
 pub fn needed() -> bool {
-    !driver_present() || std::fs::read_to_string(marker()).map(|s| s.trim() != this_exe()).unwrap_or(true)
+    !driver_present()
+        || std::fs::read_to_string(marker()).map(|s| s.trim() != this_exe()).unwrap_or(true)
+        || configured_gpu().is_none_or(|g| g != preferred_gpu())
+}
+
+const INTEL: u32 = 0x8086;
+
+/// The GPU the driver should render on: the Intel GPU when there is one
+/// (Quick Sync encodes there without a copy), else the driver's default.
+pub fn preferred_gpu() -> String {
+    unsafe {
+        let Ok(factory) = CreateDXGIFactory1::<IDXGIFactory1>() else { return "default".into() };
+        let mut i = 0;
+        while let Ok(adapter) = factory.EnumAdapters1(i) {
+            i += 1;
+            let Ok(d) = adapter.GetDesc1() else { continue };
+            if d.VendorId == INTEL && d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 == 0 {
+                let name = &d.Description[..d.Description.iter().position(|&c| c == 0).unwrap_or(d.Description.len())];
+                return String::from_utf16_lossy(name);
+            }
+        }
+    }
+    "default".into()
+}
+
+/// The GPU named in the driver's settings now.
+fn configured_gpu() -> Option<String> {
+    let xml = std::fs::read_to_string(Path::new(SETTINGS_DIR).join("vdd_settings.xml")).ok()?;
+    let start = xml.find("<friendlyname>")? + "<friendlyname>".len();
+    let end = start + xml[start..].find("</friendlyname>")?;
+    Some(xml[start..end].trim().to_string())
 }
 
 /// Run the setup in an elevated copy of this program, and wait for it
@@ -112,11 +149,16 @@ pub fn run_elevated(prefer: (u32, u32)) -> Result<bool> {
 /// The elevated part. `size` is the iPad's resolution, "2360x1640".
 pub fn perform(size: &str) -> Result<()> {
     let prefer = size.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?)));
-    write_settings(prefer)?;
-    if driver_present() {
-        tracing::info!("the Virtual Display Driver is already installed");
-    } else {
+    let gpu = preferred_gpu();
+    let changed_gpu = configured_gpu().is_some_and(|g| g != gpu);
+    write_settings(prefer, &gpu)?;
+    if !driver_present() {
         install_driver(&driver_dir()?)?;
+    } else if changed_gpu {
+        // The driver reads its settings when it starts.
+        restart_driver()?;
+    } else {
+        tracing::info!("the Virtual Display Driver is already installed");
     }
     firewall()?;
     tracing::info!("display setup done");
@@ -139,7 +181,7 @@ fn driver_dir() -> Result<PathBuf> {
         .context("the Virtual Display Driver files (vdd folder) are missing next to Mirrorly.exe")
 }
 
-fn settings_xml(prefer: Option<(u32, u32)>) -> String {
+fn settings_xml(prefer: Option<(u32, u32)>, gpu: &str) -> String {
     let mut sizes: Vec<(u32, u32)> = Vec::new();
     for s in prefer.into_iter().chain(IPAD_SIZES).chain([(1920, 1080)]) {
         if !sizes.contains(&s) {
@@ -157,7 +199,7 @@ fn settings_xml(prefer: Option<(u32, u32)>) -> String {
         <count>1</count>
     </monitors>
     <gpu>
-        <friendlyname>default</friendlyname>
+        <friendlyname>{gpu}</friendlyname>
     </gpu>
     <global>
         <g_refresh_rate>60</g_refresh_rate>
@@ -179,13 +221,58 @@ fn settings_xml(prefer: Option<(u32, u32)>) -> String {
     )
 }
 
-/// One monitor, offering the iPad's resolution (read by the driver when
-/// it starts).
-fn write_settings(prefer: Option<(u32, u32)>) -> Result<()> {
+/// One monitor, offering the iPad's resolution, on `gpu` (read by the
+/// driver when it starts).
+fn write_settings(prefer: Option<(u32, u32)>, gpu: &str) -> Result<()> {
     std::fs::create_dir_all(SETTINGS_DIR).with_context(|| format!("create {SETTINGS_DIR}"))?;
     let file = Path::new(SETTINGS_DIR).join("vdd_settings.xml");
-    std::fs::write(&file, settings_xml(prefer)).with_context(|| format!("write {}", file.display()))?;
-    tracing::info!("wrote {}", file.display());
+    std::fs::write(&file, settings_xml(prefer, gpu)).with_context(|| format!("write {}", file.display()))?;
+    tracing::info!("wrote {} (GPU: {gpu})", file.display());
+    Ok(())
+}
+
+/// Restart the driver's device(s), as `devcon restart Root\MttVDD` does.
+fn restart_driver() -> Result<()> {
+    unsafe {
+        let set = SetupDiGetClassDevsW(Some(&GUID_DEVCLASS_DISPLAY), None, None, DIGCF_PRESENT).context("list display devices")?;
+        let mut restarted = 0;
+        let mut i = 0;
+        loop {
+            let mut data = SP_DEVINFO_DATA { cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32, ..Default::default() };
+            if SetupDiEnumDeviceInfo(set, i, &mut data).is_err() {
+                break;
+            }
+            i += 1;
+            let mut buf = [0u8; 512];
+            if SetupDiGetDeviceRegistryPropertyW(set, &data, SPDRP_HARDWAREID, None, Some(&mut buf), None).is_err() {
+                continue;
+            }
+            let ids: Vec<u16> = buf.chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+            if !String::from_utf16_lossy(&ids).split('\0').any(|id| id.eq_ignore_ascii_case(HARDWARE_ID)) {
+                continue;
+            }
+            let params = SP_PROPCHANGE_PARAMS {
+                ClassInstallHeader: SP_CLASSINSTALL_HEADER {
+                    cbSize: std::mem::size_of::<SP_CLASSINSTALL_HEADER>() as u32,
+                    InstallFunction: DIF_PROPERTYCHANGE,
+                },
+                StateChange: DICS_PROPCHANGE,
+                Scope: DICS_FLAG_CONFIGSPECIFIC,
+                HwProfile: 0,
+            };
+            let ok = SetupDiSetClassInstallParamsW(set, Some(&data), Some(&params.ClassInstallHeader), std::mem::size_of_val(&params) as u32)
+                .and_then(|()| SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, set, Some(&data)));
+            match ok {
+                Ok(()) => restarted += 1,
+                Err(e) => tracing::warn!("restart the virtual display: {e}"),
+            }
+        }
+        let _ = SetupDiDestroyDeviceInfoList(set);
+        if restarted == 0 {
+            bail!("could not restart the Virtual Display Driver");
+        }
+        tracing::info!("restarted the Virtual Display Driver ({restarted} device)");
+    }
     Ok(())
 }
 
@@ -250,12 +337,13 @@ mod tests {
 
     #[test]
     fn settings_list_the_ipad_first_once() {
-        let xml = settings_xml(Some((2360, 1640)));
+        let xml = settings_xml(Some((2360, 1640)), "Intel(R) UHD Graphics");
+        assert!(xml.contains("<friendlyname>Intel(R) UHD Graphics</friendlyname>"));
         assert_eq!(xml.matches("<width>2360</width><height>1640</height>").count(), 1);
         let first = xml.find("<resolution>").unwrap();
         assert!(xml[first..].starts_with("<resolution><width>2360</width>"));
         assert!(xml.contains("<count>1</count>"));
-        let other = settings_xml(Some((1234, 800)));
+        let other = settings_xml(Some((1234, 800)), "default");
         assert!(other[other.find("<resolution>").unwrap()..].starts_with("<resolution><width>1234</width>"));
     }
 }

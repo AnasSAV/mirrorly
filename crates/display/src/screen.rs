@@ -164,8 +164,8 @@ fn apply(device: &str, dm: &DEVMODEW, what: &str) -> Result<()> {
 /// Put the virtual monitor on the desktop: where it was last, at `prefer`
 /// (the iPad's own resolution) when the driver offers that size, else the
 /// size last used, else its largest. The first time it goes to the right
-/// of the other monitors.
-pub fn attach(prefer: Option<(u32, u32)>) -> Result<VirtualScreen> {
+/// of the other monitors. Also says whether it was put on just now.
+pub fn attach(prefer: Option<(u32, u32)>) -> Result<(VirtualScreen, bool)> {
     let (device, attached) = driver_device()?;
     if !attached {
         let saved = std::fs::read_to_string(place_file()).ok().and_then(|t| parse_place(&t));
@@ -196,7 +196,7 @@ pub fn attach(prefer: Option<(u32, u32)>) -> Result<VirtualScreen> {
     let start = Instant::now();
     loop {
         match find() {
-            Ok(s) => return Ok(s),
+            Ok(s) => return Ok((s, !attached)),
             Err(e) if start.elapsed() > Duration::from_secs(3) => return Err(e),
             Err(_) => std::thread::sleep(Duration::from_millis(50)),
         }

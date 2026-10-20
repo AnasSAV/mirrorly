@@ -10,7 +10,12 @@
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none;
                -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
                font-family: -apple-system, system-ui, sans-serif; }
-  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: contain; }
+  #screen { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: contain; }
+  /* The PC's pointer, over the video: painted pixels, and a layer whose
+     white pixels invert what is below (the text I-beam). */
+  .ptr { position: fixed; left: 0; top: 0; transform-origin: 0 0; pointer-events: none;
+         image-rendering: pixelated; will-change: transform; }
+  #ptr-invert { mix-blend-mode: difference; }
   #hud { position: fixed; left: 10px; top: 10px; font: 12px ui-monospace, monospace; color: #8f8;
          background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: 6px; white-space: pre; }
   #cover { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 14px; align-items: center;
@@ -23,6 +28,8 @@
 </head>
 <body>
 <canvas id="screen"></canvas>
+<canvas id="ptr-invert" class="ptr" hidden></canvas>
+<canvas id="ptr-paint" class="ptr" hidden></canvas>
 <div id="hud" hidden></div>
 <div id="cover">
   <h1>Mirrorly display</h1>
@@ -80,6 +87,7 @@ async function frame(au) {
       output: (f) => {
         if (canvas.width !== f.displayWidth || canvas.height !== f.displayHeight) {
           canvas.width = f.displayWidth; canvas.height = f.displayHeight;
+          placePointer();
         }
         ctx.drawImage(f, 0, 0);
         const t0 = queued.get(f.timestamp);
@@ -106,11 +114,44 @@ async function frame(au) {
 
 function show(text) { hud.hidden = false; hud.textContent = text; }
 
+// The PC's pointer arrives apart from the video ("s" its shape, "p" where
+// its top-left is on the picture) and is drawn here, over it: moving the
+// mouse needs no video frame, and shows after just the network's delay.
+const ptr = { layers: [document.getElementById('ptr-paint'), document.getElementById('ptr-invert')], at: null, size: [0, 0] };
+function pointerShape(w, h, paint, invert) {
+  ptr.size = [w, h];
+  [paint, invert].forEach((data, i) => {
+    const c = ptr.layers[i];
+    c.width = Math.max(w, 1); c.height = Math.max(h, 1);
+    c.dataset.empty = data === '-' ? '1' : '';
+    if (data === '-') return;
+    const bytes = Uint8ClampedArray.from(atob(data), (ch) => ch.charCodeAt(0));
+    c.getContext('2d').putImageData(new ImageData(bytes, w, h), 0, 0);
+  });
+  placePointer();
+}
+function placePointer() {
+  const visible = ptr.at && canvas.width && ptr.size[0];
+  ptr.layers.forEach((c) => { c.hidden = !visible || !!c.dataset.empty; });
+  if (!visible) return;
+  const r = canvas.getBoundingClientRect();
+  const s = Math.min(r.width / canvas.width, r.height / canvas.height);
+  const x = r.left + (r.width - canvas.width * s) / 2 + ptr.at[0] * s;
+  const y = r.top + (r.height - canvas.height * s) / 2 + ptr.at[1] * s;
+  for (const c of ptr.layers) c.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+}
+function pointerMessage(text) {
+  const f = text.split(' ');
+  if (f[0] === 's') pointerShape(+f[1], +f[2], f[3], f[4]);
+  else if (f[0] === 'p') { ptr.at = f[1] === '-' ? null : [+f[1], +f[2]]; placePointer(); }
+}
+window.addEventListener('resize', placePointer);
+
 function connect() {
   ws = new WebSocket('ws://' + location.host + location.pathname.replace(/\/$/, '') + '/stream');
   ws.binaryType = 'arraybuffer';
-  ws.onmessage = (m) => frame(new Uint8Array(m.data));
-  ws.onclose = (ev) => { resetDecoder(); show('Waiting for Mirrorly… (' + ev.code + ')'); setTimeout(connect, 1000); };
+  ws.onmessage = (m) => typeof m.data === 'string' ? pointerMessage(m.data) : frame(new Uint8Array(m.data));
+  ws.onclose = (ev) => { resetDecoder(); ptr.at = null; placePointer(); show('Waiting for Mirrorly… (' + ev.code + ')'); setTimeout(connect, 1000); };
   ws.onopen = () => {
     if (hud.textContent.startsWith('Waiting')) hud.textContent = '';
     say(started ? 'reconnected' : 'page started');

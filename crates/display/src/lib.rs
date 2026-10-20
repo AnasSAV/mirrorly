@@ -2,7 +2,8 @@
 //!
 //! Windows gets an extra monitor from the Virtual Display Driver (MIT,
 //! signed; installed once). Mirrorly captures it (Desktop Duplication),
-//! draws the mouse pointer in, encodes it in hardware (H.264) and serves it
+//! encodes it in hardware (H.264; with Quick Sync straight from GPU
+//! surfaces) and serves it
 //! to Safari on the iPad over Wi-Fi, where a page decodes it with
 //! WebCodecs. It is used like any other monitor: with the PC's mouse and
 //! keyboard.
@@ -54,7 +55,7 @@ impl DisplaySession {
     /// resolution, when the driver offers it), capture it and serve it on
     /// `PORT`. Dropping the session takes the monitor off again.
     pub fn start(prefer: Option<(u32, u32)>) -> Result<Self> {
-        let screen = screen::attach(prefer)?;
+        let (screen, attached_now) = screen::attach(prefer)?;
         let stop = Arc::new(AtomicBool::new(false));
         let started = server::start(PORT, stop.clone()).and_then(|hub| {
             let (s2, scr, h2) = (stop.clone(), screen.clone(), hub.clone());
@@ -67,7 +68,11 @@ impl DisplaySession {
         let (hub, worker) = match started {
             Ok(x) => x,
             Err(e) => {
-                let _ = screen::detach();
+                // Only take off what this attempt put on (another session
+                // may be showing it).
+                if attached_now {
+                    let _ = screen::detach();
+                }
                 return Err(e);
             }
         };
@@ -118,6 +123,10 @@ fn local_ipv4() -> Vec<std::net::Ipv4Addr> {
 #[derive(Default)]
 struct Timings {
     capture_to_sent: Vec<u32>,
+    /// Pointer, colour conversion and hand-over to the encoder (system
+    /// memory: includes waiting for the GPU and the readback).
+    convert: Vec<u32>,
+    /// The encoder, until its output is sent.
     encode: Vec<u32>,
     frames: u32,
     bytes: u64,
@@ -137,11 +146,12 @@ impl Timings {
         };
         if self.frames > 0 {
             tracing::info!(
-                "display: {:.0} fps, {:.1} Mbit/s, {viewers} viewer(s) | capture->sent p50 {:.2} p95 {:.2} ms | encode p50 {:.2} ms",
+                "display: {:.0} fps, {:.1} Mbit/s, {viewers} viewer(s) | capture->sent p50 {:.2} p95 {:.2} ms | convert p50 {:.2} encode p50 {:.2} ms",
                 self.frames as f64 / secs,
                 self.bytes as f64 * 8.0 / secs / 1e6,
                 p(&mut self.capture_to_sent, 0.5),
                 p(&mut self.capture_to_sent, 0.95),
+                p(&mut self.convert, 0.5),
                 p(&mut self.encode, 0.5),
             );
         }
@@ -149,9 +159,15 @@ impl Timings {
     }
 }
 
+/// The encoder in use: from GPU surfaces when Quick Sync can share the
+/// capture's device, else from system memory.
+enum Enc {
+    Gpu(encode::GpuEncoder),
+    Cpu(encode::Encoder, Vec<u8>),
+}
+
 fn capture_loop(mut screen: VirtualScreen, hub: server::Hub, stop: Arc<AtomicBool>) {
     let epoch = Instant::now();
-    let mut nv12 = Vec::new();
     let mut timings = Timings::default();
     while !stop.load(Relaxed) {
         // (Re)start capture: at the beginning, and after Windows took it away
@@ -167,11 +183,23 @@ fn capture_loop(mut screen: VirtualScreen, hub: server::Hub, stop: Arc<AtomicBoo
                 continue;
             }
         };
-        let mut enc = match encode::Encoder::new(cap.width, cap.height, BITRATE) {
-            Ok(e) => e,
+        // MIRROR_DISPLAY_SYSMEM=1: the system-memory path, for comparison.
+        let gpu = if std::env::var_os("MIRROR_DISPLAY_SYSMEM").is_some() {
+            Err(anyhow::anyhow!("MIRROR_DISPLAY_SYSMEM is set"))
+        } else {
+            encode::GpuEncoder::new(cap.device(), cap.width, cap.height, BITRATE)
+        };
+        let mut enc = match gpu {
+            Ok(g) => Enc::Gpu(g),
             Err(e) => {
-                tracing::error!("display encoder: {e:#}");
-                return;
+                tracing::info!("GPU-surface encoding unavailable ({e:#}); encoding from system memory");
+                match encode::Encoder::new(cap.width, cap.height, BITRATE) {
+                    Ok(c) => Enc::Cpu(c, Vec::new()),
+                    Err(e) => {
+                        tracing::error!("display encoder: {e:#}");
+                        return;
+                    }
+                }
             }
         };
         let mut have_picture = false;
@@ -185,10 +213,19 @@ fn capture_loop(mut screen: VirtualScreen, hub: server::Hub, stop: Arc<AtomicBoo
                 Some(_) => FRAME_INTERVAL.saturating_sub(last_sent.elapsed()).as_millis() as u32,
                 None => 16,
             };
-            match cap.next(wait, &mut nv12) {
-                Ok(Some(t)) => {
-                    pending.get_or_insert(t);
-                    have_picture = true;
+            match cap.next(wait) {
+                Ok(Some(u)) => {
+                    // The pointer goes to the iPad at once, outside the video.
+                    if let Some(shape) = &u.shape {
+                        hub.pointer_shape(&cursor::shape_message(shape.as_ref()));
+                    }
+                    if u.pointer_moved || u.shape.is_some() {
+                        hub.pointer_position(&cursor::position_message(cap.pointer_at()));
+                    }
+                    if let Some(t) = u.picture {
+                        pending.get_or_insert(t);
+                        have_picture = true;
+                    }
                 }
                 Ok(None) => {}
                 Err(e) => {
@@ -212,16 +249,30 @@ fn capture_loop(mut screen: VirtualScreen, hub: server::Hub, stop: Arc<AtomicBoo
             last_sent = Instant::now();
             hub.want_key.store(false, Relaxed);
             let pts = epoch.elapsed().as_micros() as i64;
-            let t_enc = Instant::now();
+            let t_conv = Instant::now();
+            let mut t_enc = t_conv;
             let mut sent = 0usize;
-            let r = enc.encode(&nv12, pts, key, |au, is_key| {
+            let mut emit = |au: &[u8], is_key: bool| {
                 sent += au.len();
                 hub.broadcast(au, is_key);
-            });
+            };
+            // Draw the pointer, convert to NV12 and encode.
+            let r = match &mut enc {
+                Enc::Gpu(g) => g.surface().and_then(|s| {
+                    cap.render_into(&s.texture, s.index)?;
+                    t_enc = Instant::now();
+                    g.encode(s, pts, key, &mut emit)
+                }),
+                Enc::Cpu(c, nv12) => cap.read_nv12(nv12).and_then(|()| {
+                    t_enc = Instant::now();
+                    c.encode(nv12, pts, key, &mut emit)
+                }),
+            };
             if let Err(e) = r {
                 tracing::warn!("encode: {e:#}");
                 break;
             }
+            timings.convert.push((t_enc - t_conv).as_micros() as u32);
             timings.encode.push(t_enc.elapsed().as_micros() as u32);
             if sent > 0 {
                 timings.capture_to_sent.push(t0.elapsed().as_micros() as u32);
