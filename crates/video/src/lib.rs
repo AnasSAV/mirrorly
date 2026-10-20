@@ -4,6 +4,7 @@
 pub mod d3d_lock;
 pub mod decoder;
 pub mod depack;
+pub mod mp4;
 
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 
@@ -78,6 +79,11 @@ impl FrameSlot {
             }
             g = self.cv.wait(g).unwrap();
         }
+    }
+
+    /// The newest frame, if any (for a screenshot).
+    pub fn latest(&self) -> Option<Arc<VideoFrame>> {
+        self.inner.lock().unwrap().frame.clone()
     }
 
     /// Drop the current frame (e.g. after a disconnect) so its surface

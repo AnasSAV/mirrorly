@@ -32,6 +32,10 @@ pub enum Control {
     Shelf,
     /// Use the iPad as a second monitor (bar button, iPads only).
     Display,
+    /// Save the phone's screen as a picture.
+    Screenshot,
+    /// Start or stop recording the phone's screen.
+    Record,
     /// Stop that (the button on the display page).
     StopDisplay,
 }
@@ -61,6 +65,8 @@ pub fn corner_radius(view: Rect) -> f64 {
 
 /// Lay out the controls inside `bar`, with the shelf chip when something
 /// copied on the iPhone is waiting and the display button for an iPad.
+/// Icon buttons that don't fit beside the window buttons are left out,
+/// least needed first.
 pub fn toolbar(bar: Rect, scale: f64, shelf: bool, display: bool) -> Toolbar {
     let cy = bar.y + bar.h / 2.0;
     let r = 6.5 * scale;
@@ -75,15 +81,16 @@ pub fn toolbar(bar: Rect, scale: f64, shelf: bool, display: bool) -> Toolbar {
     let gap = 4.0 * scale;
     let right = bar.x + bar.w - 10.0 * scale;
     let icon = |i: f64| Rect { x: right - (i + 1.0) * size - i * gap, y: cy - size / 2.0, w: size, h: size };
-    let mut icons = vec![
-        (Control::Home, icon(0.0)),
-        (Control::AppSwitcher, icon(1.0)),
-        (Control::Rotate, icon(2.0)),
-        (Control::Power, icon(3.0)),
-    ];
-    if display {
-        icons.push((Control::Display, icon(4.0)));
-    }
+    // Right to left, in order of need.
+    let wanted = [Control::Home, Control::AppSwitcher, Control::Rotate, Control::Power, Control::Screenshot, Control::Record, Control::Display];
+    let lights_end = x0 + 2.0 * step + r + 10.0 * scale;
+    let icons: Vec<(Control, Rect)> = wanted
+        .into_iter()
+        .filter(|c| *c != Control::Display || display)
+        .enumerate()
+        .map(|(i, c)| (c, icon(i as f64)))
+        .take_while(|(_, rect)| rect.x >= lights_end)
+        .collect();
     let leftmost = icons.last().map(|i| i.1.x).unwrap_or(right);
     let shelf = shelf.then(|| {
         let left = x0 + 2.0 * step + r + 12.0 * scale;
@@ -159,6 +166,7 @@ mod tests {
     fn controls_are_inside_the_bar_and_distinct() {
         let t = toolbar(bar(), 1.0, false, true);
         assert_eq!(t.icons.last().map(|i| i.0), Some(Control::Display));
+        assert!(t.icons.iter().any(|i| i.0 == Control::Record) && t.icons.iter().any(|i| i.0 == Control::Screenshot));
         assert!(!toolbar(bar(), 1.0, false, false).icons.iter().any(|i| i.0 == Control::Display), "iPads only");
         for &(c, cx, cy, _) in &t.lights {
             assert!(inside(t.bar, cx, cy));
@@ -169,10 +177,22 @@ mod tests {
             assert!(inside(t.bar, cx, cy));
             assert_eq!(t.hit(cx, cy), Some(c));
         }
-        // The middle of the bar is plain background (drag area).
-        assert_eq!(t.hit(206.0, 18.0), None);
-        assert!(inside(t.bar, 206.0, 18.0));
-        assert!(!inside(t.bar, 206.0, 60.0));
+        // Between the window buttons and the icons is plain background
+        // (the drag area).
+        let gap = (t.lights[2].1 + t.lights[2].3 + t.icons.last().unwrap().1.x) / 2.0;
+        assert_eq!(t.hit(gap, 18.0), None);
+        assert!(inside(t.bar, gap, 18.0));
+        assert!(!inside(t.bar, gap, 60.0));
+    }
+
+    #[test]
+    fn a_narrow_bar_drops_the_least_needed_buttons() {
+        let t = toolbar(Rect { w: 260.0, ..bar() }, 1.0, false, true);
+        let have: Vec<Control> = t.icons.iter().map(|i| i.0).collect();
+        assert_eq!(&have[..3], &[Control::Home, Control::AppSwitcher, Control::Rotate]);
+        assert!(!have.contains(&Control::Display), "dropped first");
+        let lights_end = t.lights[2].1 + t.lights[2].3;
+        assert!(t.icons.iter().all(|(_, r)| r.x > lights_end), "never over the window buttons");
     }
 
     #[test]

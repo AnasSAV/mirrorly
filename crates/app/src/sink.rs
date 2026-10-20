@@ -66,6 +66,9 @@ impl MediaSink for VideoSink {
                 continue;
             }
             self.waiting_key = false;
+            if let Some(rec) = self.shared.recording.lock().unwrap().as_ref() {
+                let _ = rec.send(crate::record::Msg::Au(au.data.clone(), au.rtp_ts, au.first_pkt_us, au.key));
+            }
             let _ = self.tx.send(DecoderInput::Au(au));
         }
         self.out = aus;

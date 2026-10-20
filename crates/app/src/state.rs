@@ -136,4 +136,6 @@ pub struct Shared {
     pub hid_stats: Mutex<Option<Arc<HidStats>>>,
     /// "USB" / "Wi-Fi" while connected.
     pub transport: Mutex<Option<&'static str>>,
+    /// While recording: where the network thread hands each access unit.
+    pub recording: Mutex<Option<std::sync::mpsc::Sender<crate::record::Msg>>>,
 }

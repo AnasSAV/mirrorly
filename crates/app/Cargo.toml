@@ -20,8 +20,10 @@ winit.workspace = true
 windows.workspace = true
 # Direct2D's point types; must match the version `windows` uses.
 windows-numerics = "=0.3.1"
-# Windows clipboard bitmaps (CF_DIB) -> PNG for the iPhone.
+# Windows clipboard bitmaps (CF_DIB) -> PNG for the iPhone; screenshots.
 png = "0.17"
+# Recording and screenshot file names (local time).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 anyhow.workspace = true
 clap.workspace = true

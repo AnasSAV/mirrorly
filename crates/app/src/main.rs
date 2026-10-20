@@ -18,6 +18,10 @@
 //! The other way, text, photos and files copied on the iPhone land on the
 //! Windows clipboard.
 //!
+//! Screenshots and recordings of the phone's screen go to Pictures and
+//! Videos (record.rs); a recording is the phone's own stream, not
+//! re-encoded.
+//!
 //! An iPad can also be a second monitor (the display crate): mirroring it
 //! then stops, and once its Safari shows the display this window steps
 //! aside to a notification-area icon.
@@ -32,6 +36,7 @@ mod layout;
 mod metrics;
 mod onboarding;
 mod present;
+mod record;
 mod render;
 mod sink;
 mod state;
@@ -161,6 +166,8 @@ enum UserEvent {
     Tray(tray::TrayAction),
     /// The iPad display setup finished: Ok(false) if permission was refused.
     DisplaySetup(Result<bool, String>),
+    /// A screenshot or recording was saved (what to say), or not.
+    Saved(Result<String, String>),
 }
 
 /// Probe taps: count, pause before each (screen must be still), hold.
@@ -251,6 +258,11 @@ struct App {
     display_setup: bool,
     /// Opening the page on the iPad, before mirroring stops.
     opening: Option<Opening>,
+    /// The screen being recorded.
+    recording: Option<record::Recording>,
+    /// The GPU the picture is decoded on, and the lock its context needs
+    /// (screenshots read the picture back).
+    gpu: Option<(windows::Win32::Graphics::Direct3D11::ID3D11Device, windows::Win32::Graphics::Direct3D11::ID3D11DeviceContext, Arc<D3dLock>)>,
     threads: Vec<std::thread::JoinHandle<()>>,
 }
 
@@ -263,11 +275,14 @@ impl App {
 
     fn set_title(&self) {
         if let Some(w) = &self.window {
-            let t = match (&self.phone, self.link) {
+            let mut t = match (&self.phone, self.link) {
                 (Some(p), Some(l)) => format!("Mirrorly — {p} · {l}"),
                 (Some(p), None) => format!("Mirrorly — {p}"),
                 _ => "Mirrorly".to_string(),
             };
+            if self.recording.is_some() {
+                t.push_str(" · Recording");
+            }
             w.set_title(&t);
         }
     }
@@ -326,6 +341,7 @@ impl App {
         }
 
         let lock = Arc::new(D3dLock::default());
+        self.gpu = Some((gpu.device.clone(), gpu.context.clone(), lock.clone()));
         let dpi = window.scale_factor();
         let csv = match &self.args.timings_csv {
             Some(path) => Some(spawn_csv_logger(path)?),
@@ -462,6 +478,8 @@ impl App {
             Control::Home => self.send(HidEvent::Button { button: Button::Home }),
             Control::Shelf => self.drag_shelf(),
             Control::Display => self.start_display(),
+            Control::Screenshot => self.screenshot(),
+            Control::Record => self.toggle_recording(),
             Control::StopDisplay => self.stop_display(),
             Control::Power => {
                 let on = self.shared.chrome.lock().unwrap().disconnected;
@@ -556,6 +574,127 @@ impl App {
         }
         let (m, _) = self.mapper();
         layout::inside(layout::connect_button(m.view, self.scale()), x, y)
+    }
+
+    /// Save the phone's screen as it is now, turned as shown (Pictures ›
+    /// Mirrorly).
+    fn screenshot(&mut self) {
+        let Some(frame) = self.slot.latest().filter(|_| self.link.is_some()) else {
+            self.toast("Nothing to capture yet", 2.0);
+            return;
+        };
+        let (screen, rotation) = {
+            let v = self.shared.view.lock().unwrap();
+            (v.screen, v.rotation)
+        };
+        let (w, h) = (screen.0.min(frame.picture.width) & !1, screen.1.min(frame.picture.height) & !1);
+        let picture = match self.read_back(&frame.picture, w, h) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!("screenshot: {e:#}");
+                self.toast("Couldn't take a screenshot", 3.0);
+                return;
+            }
+        };
+        let proxy = self.proxy.clone();
+        let _ = std::thread::Builder::new().name("screenshot".into()).spawn(move || {
+            let r = record::save_screenshot(&picture, rotation)
+                .map(|_| "Screenshot saved to Pictures › Mirrorly".to_string())
+                .map_err(|e| format!("screenshot: {e:#}"));
+            let _ = proxy.send_event(UserEvent::Saved(r));
+        });
+    }
+
+    /// The top-left `w` x `h` of a decoded picture, read back as NV12.
+    fn read_back(&self, pic: &video::DecodedPicture, w: u32, h: u32) -> Result<record::Nv12> {
+        use windows::Win32::Graphics::{
+            Direct3D11::{D3D11_BOX, D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING},
+            Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_SAMPLE_DESC},
+        };
+        let (device, ctx, lock) = self.gpu.as_ref().context("no GPU yet")?;
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: w,
+            Height: h,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_NV12,
+            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+            Usage: D3D11_USAGE_STAGING,
+            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+            ..Default::default()
+        };
+        let _g = lock.lock();
+        unsafe {
+            let mut staging = None;
+            device.CreateTexture2D(&desc, None, Some(&mut staging))?;
+            let staging = staging.context("staging texture")?;
+            // The decoder's texture array: one subresource per slice.
+            let area = D3D11_BOX { left: 0, top: 0, front: 0, right: w, bottom: h, back: 1 };
+            ctx.CopySubresourceRegion(&staging, 0, 0, 0, 0, &pic.texture, pic.index, Some(&area));
+            let mut map = D3D11_MAPPED_SUBRESOURCE::default();
+            ctx.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut map))?;
+            let (wu, hu, pitch) = (w as usize, h as usize, map.RowPitch as usize);
+            let mut data = vec![0u8; wu * hu * 3 / 2];
+            let src = map.pData as *const u8;
+            // Y rows, then the interleaved UV rows (which follow the luma
+            // plane at h rows of pitch).
+            for row in 0..hu + hu / 2 {
+                std::ptr::copy_nonoverlapping(src.add(row * pitch), data.as_mut_ptr().add(row * wu), wu);
+            }
+            ctx.Unmap(&staging, 0);
+            Ok(record::Nv12 { data, width: w, height: h })
+        }
+    }
+
+    /// Start or stop recording the phone's screen (Videos › Mirrorly).
+    fn toggle_recording(&mut self) {
+        if self.recording.is_some() {
+            self.stop_recording();
+            return;
+        }
+        if self.link.is_none() {
+            self.toast("Connect your iPhone first", 3.0);
+            return;
+        }
+        let (screen, rotation) = {
+            let v = self.shared.view.lock().unwrap();
+            (v.screen, v.rotation)
+        };
+        let proxy = self.proxy.clone();
+        let started = record::start(screen.0, screen.1, rotation, move |r| {
+            let r = r
+                .map(|(_, secs)| format!("Recording saved ({}:{:02}) to Videos › Mirrorly", secs as u64 / 60, secs as u64 % 60))
+                .map_err(|e| format!("recording: {e:#}"));
+            let _ = proxy.send_event(UserEvent::Saved(r));
+        });
+        match started {
+            Ok(rec) => {
+                *self.shared.recording.lock().unwrap() = Some(rec.tx.clone());
+                // The file starts at a keyframe: ask for one now.
+                if let Some(d) = &self.device {
+                    d.keyframes.request();
+                }
+                self.recording = Some(rec);
+                self.toast("Recording. Press F7 or the stop button to finish.", 3.0);
+            }
+            Err(e) => {
+                tracing::warn!("recording: {e:#}");
+                self.toast("Couldn't start recording", 3.0);
+            }
+        }
+        self.set_title();
+        self.sync_bar();
+    }
+
+    /// Finish the recording (the file is completed on its own thread).
+    fn stop_recording(&mut self) {
+        let Some(rec) = self.recording.take() else { return };
+        self.shared.recording.lock().unwrap().take();
+        let _ = rec.tx.send(record::Msg::Stop);
+        tracing::info!("recording stopped: {}", rec.path.display());
+        self.toast("Saving the recording…", 10.0);
+        self.set_title();
+        self.sync_bar();
     }
 
     /// "Use as display" is offered while an iPad is connected.
@@ -875,6 +1014,14 @@ impl App {
     }
 
     fn quit(&mut self, el: &ActiveEventLoop) {
+        if let Some(rec) = self.recording.take() {
+            // Finish the file before the process ends.
+            self.shared.recording.lock().unwrap().take();
+            let _ = rec.tx.send(record::Msg::Stop);
+            if let Some(t) = rec.thread {
+                let _ = t.join();
+            }
+        }
         self.display = None;
         self.tray = None;
         self.release_all();
@@ -1005,7 +1152,7 @@ impl App {
         let st = {
             let c = self.shared.chrome.lock().unwrap();
             let hover = c.hover.filter(|h| !matches!(h, Control::Connect | Control::Phone(_) | Control::Forget(_) | Control::StopDisplay));
-            bar::state_of(&c, hover, display)
+            bar::state_of(&c, hover, display, self.recording.is_some())
         };
         if let Some(b) = self.bar.as_mut() {
             b.sync(&st);
@@ -1159,6 +1306,16 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 return;
             }
+            UserEvent::Saved(r) => {
+                match r {
+                    Ok(text) => self.toast(text, 4.0),
+                    Err(e) => {
+                        tracing::warn!("{e}");
+                        self.toast("Couldn't save it", 4.0);
+                    }
+                }
+                return;
+            }
             UserEvent::DisplaySetup(r) => {
                 self.display_setup = false;
                 match r {
@@ -1238,6 +1395,8 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             DeviceEvent::Disconnected(_) => {
+                // The stream ended: finish the recording with what it has.
+                self.stop_recording();
                 *self.shared.transport.lock().unwrap() = None;
                 self.link = None;
                 self.gesture = Gesture::default();
@@ -1389,6 +1548,8 @@ impl ApplicationHandler<UserEvent> for App {
                     KeyCode::F3 => Some("lock"),
                     KeyCode::F4 => Some("voldown"),
                     KeyCode::F5 => Some("volup"),
+                    KeyCode::F6 => Some("screenshot"),
+                    KeyCode::F7 => Some("record"),
                     KeyCode::F9 => Some("probe"),
                     KeyCode::F10 => Some("stats"),
                     KeyCode::F11 => Some("fullscreen"),
@@ -1410,6 +1571,8 @@ impl ApplicationHandler<UserEvent> for App {
                             "lock" => self.send(HidEvent::Button { button: Button::Lock }),
                             "voldown" => self.send(HidEvent::Button { button: Button::VolumeDown }),
                             "volup" => self.send(HidEvent::Button { button: Button::VolumeUp }),
+                            "screenshot" => self.screenshot(),
+                            "record" => self.toggle_recording(),
                             "probe" => self.start_probe(),
                             "stats" => {
                                 let on = !self.shared.overlay.load(Relaxed);
@@ -1660,6 +1823,8 @@ fn main() -> Result<()> {
         display_hidden: false,
         display_setup: false,
         opening: None,
+        recording: None,
+        gpu: None,
         threads: Vec::new(),
     };
     event_loop.run_app(&mut app)?;

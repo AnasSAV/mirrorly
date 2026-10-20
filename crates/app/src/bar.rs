@@ -98,6 +98,8 @@ pub struct BarState {
     pub disconnected: bool,
     /// An iPad is connected: offer "Use as display".
     pub display: bool,
+    /// Recording the screen: the record button is a red stop button.
+    pub recording: bool,
 }
 
 struct Proc {
@@ -166,6 +168,9 @@ const GLYPH_CONNECT: &str = "\u{E703}";
 const GLYPH_PHOTO: &str = "\u{EB9F}";
 const GLYPH_DOCUMENT: &str = "\u{E8A5}";
 const GLYPH_DISPLAY: &str = "\u{E7F4}";
+const GLYPH_SCREENSHOT: &str = "\u{E722}";
+const GLYPH_RECORD: &str = "\u{E7C8}";
+const GLYPH_STOP: &str = "\u{E71A}";
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> D2D1_COLOR_F {
     D2D1_COLOR_F { r, g, b, a }
@@ -502,10 +507,14 @@ impl Bar {
                     Control::Power if st.disconnected => GLYPH_CONNECT,
                     Control::Power => GLYPH_POWER,
                     Control::Display => GLYPH_DISPLAY,
+                    Control::Screenshot => GLYPH_SCREENSHOT,
+                    Control::Record if st.recording => GLYPH_STOP,
+                    Control::Record => GLYPH_RECORD,
                     _ => GLYPH_ROTATE,
                 };
                 let f = self.fonts.icons.clone();
-                self.text(g, &f, r, rgba(1.0, 1.0, 1.0, 0.95))?;
+                let col = if c == Control::Record && st.recording { rgba(1.0, 0.33, 0.30, 1.0) } else { rgba(1.0, 1.0, 1.0, 0.95) };
+                self.text(g, &f, r, col)?;
             }
             if let (Some(r), Some(label)) = (t.shelf, &st.shelf) {
                 let a = if st.hover == Some(Control::Shelf) { 1.0 } else { 0.85 };
@@ -573,7 +582,7 @@ impl Fonts {
 }
 
 /// The bar state for the current chrome.
-pub fn state_of(c: &crate::state::Chrome, hover: Option<Control>, display: bool) -> BarState {
+pub fn state_of(c: &crate::state::Chrome, hover: Option<Control>, display: bool, recording: bool) -> BarState {
     let shelf: Option<&Shelf> = c.shelf.as_ref();
     BarState {
         hover,
@@ -581,5 +590,6 @@ pub fn state_of(c: &crate::state::Chrome, hover: Option<Control>, display: bool)
         shelf_media: shelf.is_some_and(|s| s.media),
         disconnected: c.disconnected,
         display,
+        recording,
     }
 }

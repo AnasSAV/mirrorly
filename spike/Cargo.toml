@@ -16,6 +16,7 @@ clap.workspace = true
 tracing-subscriber.workspace = true
 winit.workspace = true
 display.workspace = true
+video.workspace = true
 tracing.workspace = true
 # s9_display (iPad as a monitor): DXGI capture of the virtual display.
 windows = { version = "=0.62.2", features = [
