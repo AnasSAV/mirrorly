@@ -1,4 +1,7 @@
-# Mirrorly
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/AnasSAV/mirrorly/main/docs/assets/logo/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/AnasSAV/mirrorly/main/docs/assets/logo/logo-light.svg" alt="Mirrorly" width="300">
+</picture>
 
 Mirrorly shows your iPhone's or iPad's screen in a window on your Windows PC
 and lets you use it with your mouse and keyboard, over a USB cable or Wi-Fi.

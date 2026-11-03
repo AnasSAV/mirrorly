@@ -1,128 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" role="img">
+  <title>The Mirrorly window and what its bar holds</title>
+  <style>
+    :root { --bg1:#FBFCFD; --bg2:#E9EFF3; --card:#FFFFFF; --cardline:#D3DCE2; --ink:#20272D; --soft:#56646F; --faint:#66757F; --accent:#2F6F88; --ice:#8DC2D6; --onice:#14191D; --tint:#E1F1F7; --tintline:#8DC2D6; --deep:#37525F; --ondeep:#E4F5FA; --line:#5F8FA3; --hair:#2C3339; --hairop:0.09; --frame:#C9D3DA; --bar:#E4EAEE; --baricon:#2C3339; --barline:#BFCAD2; --badge:#2C3339; --onbadge:#F3F6F8; --desk1:#DCE4E9; --desk2:#CDD7DE; --deskitem:#2C3339; --deskop:0.14; --device:#2C3339; --deviceline:#576774; --chartphone:#576774; --onchart:#F3F6F8; --chartpc:#8DC2D6; --stage:#4F8CA6; --glow:#8DC2D6; --glowop:0.34; --mbody:#2E383F; --mring:#23282E; --mleft:#576774; --mice:#8DC2D6; --mright:#37525F; --mplay:#D2EDF5; --mmirror:#2C3339; --mly:#7FB6CA; }
+    @media (prefers-color-scheme: dark) { :root { --bg1:#14181C; --bg2:#1E252B; --card:#232A30; --cardline:#3A464F; --ink:#E9F0F4; --soft:#A3B3BE; --faint:#8A9BA7; --accent:#8DC2D6; --ice:#8DC2D6; --onice:#14191D; --tint:#22343E; --tintline:#4F7A8D; --deep:#37525F; --ondeep:#E4F5FA; --line:#8DC2D6; --hair:#FFFFFF; --hairop:0.06; --frame:#1A1F24; --bar:#262D33; --baricon:#E9F0F4; --barline:#0E1114; --badge:#E9F0F4; --onbadge:#14191D; --desk1:#232A30; --desk2:#1A1F24; --deskitem:#FFFFFF; --deskop:0.11; --device:#0E1114; --deviceline:#3A464F; --chartphone:#66788A; --onchart:#FFFFFF; --chartpc:#8DC2D6; --stage:#8DC2D6; --glow:#8DC2D6; --glowop:0.16; --mbody:#66788A; --mring:#3D4954; --mleft:#8FA2B0; --mice:#8DC2D6; --mright:#37525F; --mplay:#E4F5FA; --mmirror:#E9F0F4; --mly:#8DC2D6; } }
+  </style>
   <defs>
-    <linearGradient id="wall" x1="0" y1="0" x2="0.7" y2="1">
-      <stop offset="0" stop-color="#0E3B8C"/>
-      <stop offset="0.5" stop-color="#5B2BC9"/>
-      <stop offset="1" stop-color="#D02670"/>
-    </linearGradient>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0D1226"/>
-      <stop offset="1" stop-color="#141a35"/>
-    </linearGradient>
-    <filter id="shadow" x="-40%" y="-20%" width="180%" height="140%">
-      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000" flood-opacity="0.6"/>
-    </filter>
-    <clipPath id="screen"><rect x="118" y="104" width="250" height="462" rx="38"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--bg1)"/><stop offset="1" stop-color="var(--bg2)"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--line)"/></marker>
+<linearGradient id="wall" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#23282E"/><stop offset="0.5" stop-color="#37525F"/><stop offset="1" stop-color="#8DC2D6"/></linearGradient>
+<filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#0B0E11" flood-opacity="0.30"/></filter>
+<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#0B0E11" flood-opacity="0.28"/></filter>
+<clipPath id="screen"><rect x="96" y="104" width="276" height="462" rx="38"/></clipPath>
   </defs>
-
-  <rect width="960" height="600" rx="24" fill="url(#bg)"/>
-
-  <!-- Window -->
-  <g filter="url(#shadow)">
-    <rect x="104" y="44" width="278" height="536" rx="46" fill="#1C1C20"/>
-  </g>
-  <!-- Bar above the screen -->
-  <path d="M104 90 V70 a26 26 0 0 1 26 -26 h226 a26 26 0 0 1 26 26 V90 z" fill="#28282D"/>
-  <rect x="104" y="80" width="278" height="16" fill="#28282D"/>
-  <circle cx="128" cy="68" r="7" fill="#FF5F57"/>
-  <circle cx="150" cy="68" r="7" fill="#FEBC2E"/>
-  <circle cx="172" cy="68" r="7" fill="#28C840"/>
-  <rect x="190" y="55" width="86" height="26" rx="13" fill="#4C61FA"/>
-  <rect x="200" y="62" width="11" height="12" rx="2" fill="none" stroke="#fff" stroke-width="1.6"/>
-  <text x="218" y="73" font-size="12.5" font-weight="600" fill="#fff">3 photos</text>
-  <!-- rotate, switcher, home glyphs -->
-  <g fill="none" stroke="#fff" stroke-opacity="0.9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M283.5 63.5 a7 7 0 1 0 9 0 M288 59.5 v7"/>
-    <path d="M305 72 a7 7 0 1 0 2 -8 M305 60 v5 h5"/>
-    <rect x="326" y="61" width="9" height="13" rx="2"/>
-    <rect x="337" y="63" width="5" height="9" rx="1.5"/>
-    <path d="M352 75 v-7 l7 -6 l7 6 v7 z"/>
-  </g>
-
-  <!-- Screen -->
-  <g clip-path="url(#screen)">
-    <rect x="118" y="104" width="250" height="462" fill="url(#wall)"/>
-    <text x="150" y="134" font-size="14" font-weight="600" fill="#fff">9:41</text>
-    <g fill="#fff"><rect x="318" y="124" width="18" height="9" rx="2.5" fill-opacity="0.9"/><rect x="337" y="127" width="2" height="4" rx="1" fill-opacity="0.9"/></g>
-    <g>
-      <rect x="140" y="164" width="46" height="46" rx="11" fill="#34C759"/>
-      <rect x="198" y="164" width="46" height="46" rx="11" fill="#FFFFFF"/>
-      <rect x="256" y="164" width="46" height="46" rx="11" fill="#FF9500"/>
-      <rect x="314" y="164" width="46" height="46" rx="11" fill="#0A84FF"/>
-      <rect x="140" y="232" width="46" height="46" rx="11" fill="#FF375F"/>
-      <rect x="198" y="232" width="46" height="46" rx="11" fill="#5E5CE6"/>
-      <rect x="256" y="232" width="46" height="46" rx="11" fill="#FFD60A"/>
-      <rect x="314" y="232" width="46" height="46" rx="11" fill="#1C1C1E"/>
-      <rect x="140" y="300" width="46" height="46" rx="11" fill="#64D2FF"/>
-      <rect x="198" y="300" width="46" height="46" rx="11" fill="#30D158"/>
-      <rect x="256" y="300" width="46" height="46" rx="11" fill="#BF5AF2"/>
-      <rect x="314" y="300" width="46" height="46" rx="11" fill="#FF9F0A"/>
-    </g>
-    <!-- toast -->
-    <rect x="128" y="448" width="230" height="32" rx="16" fill="#18181B" fill-opacity="0.93"/>
-    <text x="243" y="469" text-anchor="middle" font-size="12" fill="#fff">3 photos copied · drag it from the bar</text>
-    <!-- dock -->
-    <rect x="132" y="494" width="222" height="58" rx="22" fill="#FFFFFF" fill-opacity="0.22"/>
-    <rect x="146" y="502" width="42" height="42" rx="10" fill="#34C759"/>
-    <rect x="198" y="502" width="42" height="42" rx="10" fill="#0A84FF"/>
-    <rect x="250" y="502" width="42" height="42" rx="10" fill="#FFFFFF"/>
-    <rect x="302" y="502" width="42" height="42" rx="10" fill="#FF9500"/>
-    <rect x="203" y="557" width="80" height="4.5" rx="2.25" fill="#fff" fill-opacity="0.9"/>
-  </g>
-  <!-- touch dot -->
-  <circle cx="221" cy="255" r="16" fill="#FFFFFF" fill-opacity="0.32" stroke="#FFFFFF" stroke-opacity="0.95" stroke-width="2.2"/>
-  <!-- free top edge highlight -->
-  <rect x="150" y="105" width="186" height="5" rx="2.5" fill="#6EE7B7" fill-opacity="0.9"/>
-
-  <!-- Number badges on the mockup -->
-  <g font-size="13" font-weight="700" text-anchor="middle" fill="#0D1226">
-    <circle cx="150" cy="32" r="12" fill="#FFFFFF"/><text x="150" y="37">1</text>
-    <circle cx="233" cy="32" r="12" fill="#FFFFFF"/><text x="233" y="37">2</text>
-    <circle cx="325" cy="32" r="12" fill="#FFFFFF"/><text x="325" y="37">3</text>
-    <circle cx="94" cy="108" r="12" fill="#6EE7B7"/><text x="94" y="113">4</text>
-    <circle cx="94" cy="255" r="12" fill="#FFFFFF"/><text x="94" y="260">5</text>
-    <circle cx="94" cy="464" r="12" fill="#FFFFFF"/><text x="94" y="469">6</text>
-  </g>
-  <g stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="1.4" stroke-dasharray="3 4">
-    <path d="M106 255 H203"/>
-    <path d="M106 464 H140"/>
-    <path d="M106 108 H150"/>
-  </g>
-
-  <!-- Legend -->
-  <text x="446" y="78" font-size="13" font-weight="700" letter-spacing="1.6" fill="#7C8BC9">THE MIRRORLY WINDOW</text>
-  <g font-size="16">
-    <g transform="translate(446 112)">
-      <circle cx="12" cy="12" r="12" fill="#FFFFFF"/><text x="12" y="17" text-anchor="middle" font-size="13" font-weight="700" fill="#0D1226">1</text>
-      <text x="40" y="12" font-weight="600" fill="#FFFFFF">Window buttons</text>
-      <text x="40" y="34" font-size="14" fill="#A3ADD6">Close, minimise, and step through four sizes.</text>
-    </g>
-    <g transform="translate(446 184)">
-      <circle cx="12" cy="12" r="12" fill="#FFFFFF"/><text x="12" y="17" text-anchor="middle" font-size="13" font-weight="700" fill="#0D1226">2</text>
-      <text x="40" y="12" font-weight="600" fill="#FFFFFF">Copied on your iPhone</text>
-      <text x="40" y="34" font-size="14" fill="#A3ADD6">Photos and files you copy on the phone appear here.</text>
-      <text x="40" y="54" font-size="14" fill="#A3ADD6">Drag the chip into Explorer or onto the desktop.</text>
-    </g>
-    <g transform="translate(446 276)">
-      <circle cx="12" cy="12" r="12" fill="#FFFFFF"/><text x="12" y="17" text-anchor="middle" font-size="13" font-weight="700" fill="#0D1226">3</text>
-      <text x="40" y="12" font-weight="600" fill="#FFFFFF">Disconnect · Rotate · App Switcher · Home</text>
-      <text x="40" y="34" font-size="14" fill="#A3ADD6">The bar appears when you point at the window.</text>
-    </g>
-    <g transform="translate(446 348)">
-      <circle cx="12" cy="12" r="12" fill="#6EE7B7"/><text x="12" y="17" text-anchor="middle" font-size="13" font-weight="700" fill="#0D1226">4</text>
-      <text x="40" y="12" font-weight="600" fill="#FFFFFF">The top edge stays free</text>
-      <text x="40" y="34" font-size="14" fill="#A3ADD6">The bar sits above the screen, never on it, so you can</text>
-      <text x="40" y="54" font-size="14" fill="#A3ADD6">still pull down Control Center and notifications.</text>
-    </g>
-    <g transform="translate(446 440)">
-      <circle cx="12" cy="12" r="12" fill="#FFFFFF"/><text x="12" y="17" text-anchor="middle" font-size="13" font-weight="700" fill="#0D1226">5</text>
-      <text x="40" y="12" font-weight="600" fill="#FFFFFF">Instant touch dot</text>
-      <text x="40" y="34" font-size="14" fill="#A3ADD6">Shows where you clicked before the iPhone responds.</text>
-    </g>
-    <g transform="translate(446 512)">
-      <circle cx="12" cy="12" r="12" fill="#FFFFFF"/><text x="12" y="17" text-anchor="middle" font-size="13" font-weight="700" fill="#0D1226">6</text>
-      <text x="40" y="12" font-weight="600" fill="#FFFFFF">Transfer messages</text>
-      <text x="40" y="34" font-size="14" fill="#A3ADD6">Copying, pasting and saving, at a glance.</text>
-    </g>
-  </g>
+  <rect width="960" height="600" rx="24" fill="url(#bg)" stroke="var(--cardline)"/>
+<g filter="url(#shadow)"><rect x="84" y="60" width="300" height="520" rx="46" fill="var(--frame)" stroke="var(--cardline)"/></g>
+<path d="M84 96 V70 a26 26 0 0 1 26 -26 h248 a26 26 0 0 1 26 26 V96 z" fill="var(--bar)"/><rect x="84" y="95" width="300" height="1" fill="var(--barline)"/>
+<circle cx="108" cy="70" r="6.5" fill="#FF5F57"/><circle cx="128" cy="70" r="6.5" fill="#FEBC2E"/><circle cx="148" cy="70" r="6.5" fill="#28C840"/><rect x="160" y="57" width="68" height="26" rx="13" fill="var(--ice)"/><text x="194" y="74.5" font-size="11.5" font-weight="700" text-anchor="middle" fill="var(--onice)">3 photos</text><g fill="none" stroke="var(--baricon)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="245" cy="70" r="7"/></g><circle cx="245" cy="70" r="3" fill="var(--baricon)"/><g fill="none" stroke="var(--baricon)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M260.5 66.5 h3.5 l1.5 -2.5 h5 l1.5 2.5 h3.5 v9 h-15 z"/><circle cx="268" cy="70.5" r="2.6"/></g><g fill="none" stroke="var(--baricon)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M286.4 65.6 a6.8 6.8 0 1 0 9.2 0 M291 62.5 v7"/></g><g fill="none" stroke="var(--baricon)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M308 73 a7 7 0 1 0 1.5 -8 M308.5 62 v4 h4"/></g><g fill="none" stroke="var(--baricon)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="330" y="63.5" width="9" height="13" rx="2"/><rect x="341" y="65.5" width="4" height="9" rx="1.5"/></g><g fill="none" stroke="var(--baricon)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M353.5 76.5 v-7 l6.5 -6 l6.5 6 v7 z"/></g>
+<g clip-path="url(#screen)"><rect x="96" y="104" width="276" height="462" fill="url(#wall)"/><text x="128" y="134" font-size="14" font-weight="600" fill="#fff">9:41</text><rect x="322" y="124" width="18" height="9" rx="2.5" fill="#fff" fill-opacity="0.9"/><rect x="341" y="127" width="2" height="4" rx="1" fill="#fff" fill-opacity="0.9"/><rect x="121" y="164" width="46" height="46" rx="11" fill="#D2EDF5"/><rect x="181" y="164" width="46" height="46" rx="11" fill="#FFFFFF"/><rect x="241" y="164" width="46" height="46" rx="11" fill="#8DC2D6"/><rect x="301" y="164" width="46" height="46" rx="11" fill="#66788A"/><rect x="121" y="232" width="46" height="46" rx="11" fill="#7FB6CA"/><rect x="181" y="232" width="46" height="46" rx="11" fill="#E9F0F4"/><rect x="241" y="232" width="46" height="46" rx="11" fill="#A9D3E2"/><rect x="301" y="232" width="46" height="46" rx="11" fill="#2C3339"/><rect x="121" y="300" width="46" height="46" rx="11" fill="#D2EDF5"/><rect x="181" y="300" width="46" height="46" rx="11" fill="#8FA2B0"/><rect x="241" y="300" width="46" height="46" rx="11" fill="#FFFFFF"/><rect x="301" y="300" width="46" height="46" rx="11" fill="#8DC2D6"/><rect x="119" y="448" width="230" height="32" rx="16" fill="#23282E" fill-opacity="0.95"/><text x="234" y="469" text-anchor="middle" font-size="12" fill="#E9F0F4">3 photos copied · drag it from the bar</text><rect x="124" y="494" width="220" height="58" rx="22" fill="#FFFFFF" fill-opacity="0.28"/><rect x="135" y="502" width="42" height="42" rx="10" fill="#8DC2D6"/><rect x="187" y="502" width="42" height="42" rx="10" fill="#D2EDF5"/><rect x="239" y="502" width="42" height="42" rx="10" fill="#FFFFFF"/><rect x="291" y="502" width="42" height="42" rx="10" fill="#66788A"/><rect x="194" y="557" width="80" height="4.5" rx="2.25" fill="#fff" fill-opacity="0.9"/></g>
+<circle cx="204" cy="255" r="16" fill="#FFFFFF" fill-opacity="0.32" stroke="#FFFFFF" stroke-opacity="0.95" stroke-width="2.2"/>
+<rect x="130" y="105" width="208" height="5" rx="2.5" fill="#D2EDF5"/>
+<circle cx="128" cy="26" r="12" fill="var(--badge)"/><text x="128" y="31" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onbadge)">1</text><circle cx="194" cy="26" r="12" fill="var(--badge)"/><text x="194" y="31" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onbadge)">2</text><circle cx="302" cy="26" r="12" fill="var(--badge)"/><text x="302" y="31" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onbadge)">3</text><circle cx="56" cy="108" r="12" fill="var(--ice)"/><text x="56" y="113" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onice)">4</text><circle cx="56" cy="255" r="12" fill="var(--badge)"/><text x="56" y="260" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onbadge)">5</text><circle cx="56" cy="464" r="12" fill="var(--badge)"/><text x="56" y="469" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onbadge)">6</text>
+<path d="M68 108 H130 M68 255 H188 M68 464 H119" stroke="var(--line)" stroke-width="1.4" stroke-dasharray="3 4"/>
+<text x="446" y="78" font-size="13" font-weight="700" letter-spacing="1.4" fill="var(--accent)">THE MIRRORLY WINDOW</text>
+<circle cx="458" cy="124" r="12" fill="var(--badge)"/><text x="458" y="129" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onbadge)">1</text><text x="486" y="124" font-size="16" font-weight="600" fill="var(--ink)">Window buttons</text><text x="486" y="146" font-size="14" fill="var(--soft)">Close, minimise, and step through four sizes.</text>
+<circle cx="458" cy="196" r="12" fill="var(--badge)"/><text x="458" y="201" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onbadge)">2</text><text x="486" y="196" font-size="16" font-weight="600" fill="var(--ink)">Copied on your iPhone</text><text x="486" y="218" font-size="14" fill="var(--soft)">Photos and files you copy on the phone appear here.</text><text x="486" y="238" font-size="14" fill="var(--soft)">Drag the chip into Explorer or onto the desktop.</text>
+<circle cx="458" cy="288" r="12" fill="var(--badge)"/><text x="458" y="293" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onbadge)">3</text><text x="486" y="288" font-size="16" font-weight="600" fill="var(--ink)">Buttons for the phone</text><text x="486" y="310" font-size="14" fill="var(--soft)">Record, screenshot, disconnect, rotate, App Switcher, Home.</text><text x="486" y="330" font-size="14" fill="var(--soft)">The bar appears when you point at the window.</text>
+<circle cx="458" cy="380" r="12" fill="var(--ice)"/><text x="458" y="385" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onice)">4</text><text x="486" y="380" font-size="16" font-weight="600" fill="var(--ink)">The top edge stays free</text><text x="486" y="402" font-size="14" fill="var(--soft)">The bar sits above the screen, never on it, so you can</text><text x="486" y="422" font-size="14" fill="var(--soft)">still pull down Control Center and notifications.</text>
+<circle cx="458" cy="472" r="12" fill="var(--badge)"/><text x="458" y="477" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onbadge)">5</text><text x="486" y="472" font-size="16" font-weight="600" fill="var(--ink)">Instant touch dot</text><text x="486" y="494" font-size="14" fill="var(--soft)">Shows where you clicked before the iPhone responds.</text>
+<circle cx="458" cy="544" r="12" fill="var(--badge)"/><text x="458" y="549" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onbadge)">6</text><text x="486" y="544" font-size="16" font-weight="600" fill="var(--ink)">Transfer messages</text><text x="486" y="566" font-size="14" fill="var(--soft)">Copying, pasting and saving, at a glance.</text>
 </svg>

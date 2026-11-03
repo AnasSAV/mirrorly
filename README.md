@@ -3,13 +3,13 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/AnasSAV/mirrorly?style=flat-square&color=4C61FA&label=release"></a>
-  <a href="../../actions/workflows/ci.yml"><img alt="CI" src="https://github.com/AnasSAV/mirrorly/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="../../releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/AnasSAV/mirrorly/total?style=flat-square&color=7B4DF2"></a>
-  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square">
-  <img alt="iOS and iPadOS 27 or later" src="https://img.shields.io/badge/iOS%20%7C%20iPadOS-27%2B-111111?style=flat-square">
-  <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-B7410E?style=flat-square">
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-22A06B?style=flat-square"></a>
+  <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/AnasSAV/mirrorly?style=flat-square&labelColor=2C3339&color=8DC2D6&label=release"></a>
+  <a href="../../actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/AnasSAV/mirrorly/ci.yml?branch=main&style=flat-square&labelColor=2C3339&label=CI"></a>
+  <a href="../../releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/AnasSAV/mirrorly/total?style=flat-square&labelColor=2C3339&color=8DC2D6"></a>
+  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-8DC2D6?style=flat-square&labelColor=2C3339&color=8DC2D6">
+  <img alt="iOS and iPadOS 27 or later" src="https://img.shields.io/badge/iOS%20%7C%20iPadOS-27%2B-8DC2D6?style=flat-square&labelColor=2C3339&color=8DC2D6">
+  <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-8DC2D6?style=flat-square&labelColor=2C3339&color=8DC2D6">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-8DC2D6?style=flat-square&labelColor=2C3339&color=8DC2D6"></a>
 </p>
 
 <p align="center">
@@ -67,7 +67,7 @@ can also be a **second monitor** for the PC.
     <td valign="top">
       <h3>🪟 Looks like a Mac</h3>
       Just the phone screen in a rounded window. A bar above it holds the
-      buttons and never covers Control Center.
+      buttons and never covers Control Center. Light or dark, following Windows.
     </td>
     <td valign="top">
       <h3>🧭 Guided setup</h3>
@@ -92,7 +92,7 @@ can also be a **second monitor** for the PC.
 </table>
 
 <p align="center">
-  <img src="docs/assets/window.svg" alt="The Mirrorly window: window buttons, the copied-files chip, Rotate, App Switcher and Home on a bar above the screen" width="100%">
+  <img src="docs/assets/window.svg" alt="The Mirrorly window: window buttons, the copied-files chip, Record, Screenshot, Disconnect, Rotate, App Switcher and Home on a bar above the screen" width="100%">
 </p>
 
 ## Download
@@ -128,6 +128,11 @@ flowchart LR
     B --> C["Turn on<br/><b>Developer Mode</b>"]
     C --> D["Open <b>Mirrorly</b>"]
     D --> E(["Your iPhone<br/>on screen 🎉"])
+    classDef step fill:#8DC2D6,stroke:#37525F,stroke-width:1.5px,color:#14191D
+    classDef done fill:#37525F,stroke:#8DC2D6,stroke-width:1.5px,color:#E4F5FA
+    class A,B,C,D step
+    class E done
+    linkStyle default stroke:#5F8FA3,stroke-width:2px
 ```
 
 1. **Install [Apple Devices](https://apps.microsoft.com/detail/9np83lwlpz9k)**
@@ -217,7 +222,7 @@ which one to mirror.
    - **Files:** touch and hold a file › **Copy**.
 2. Mirrorly fetches it straight away and shows *"Photo copied · drag it from the
    bar"*.
-3. Point at the window and **drag the blue chip** on the bar onto the desktop,
+3. Point at the window and **drag the chip** on the bar onto the desktop,
    into an Explorer folder, or into any app that accepts files.
 
 Files keep their original names (`Invoice.pdf` stays `Invoice.pdf`). Photos are
@@ -578,8 +583,9 @@ powershell -ExecutionPolicy Bypass -File packaging\build-release.ps1   # -> dist
 | `--rctl pmd3\|idevice\|off` | RTCP rate-control report layout |
 
 Environment: `MIRROR_TOUCH=uhs|indigo`, `MIRROR_NAGLE=1`,
-`MIRROR_DXGI_TRACE=1`, `MIRROR_SQUARE=1`, `MIRROR_DISPLAY_SYSMEM=1` (iPad
-display: encode from system memory, for comparison). <kbd>F9</kbd> runs a latency probe:
+`MIRROR_DXGI_TRACE=1`, `MIRROR_SQUARE=1`, `MIRROR_THEME=light|dark` (instead
+of following Windows), `MIRROR_DISPLAY_SYSMEM=1` (iPad display: encode from
+system memory, for comparison). <kbd>F9</kbd> runs a latency probe:
 10 timed taps where the mouse points.
 
 </details>

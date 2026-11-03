@@ -30,6 +30,10 @@ reachable.
 Drag the bar's empty space to move the window. On a small window the bar
 leaves out the buttons it has no room for.
 
+Mirrorly is light or dark to match Windows (*Settings › Personalization ›
+Colors › Choose your mode*, the app mode), and changes as soon as Windows does.
+On an iPad display, the page before you start follows the iPad's own setting.
+
 ## Keyboard
 
 Typing goes straight to the iPhone, like a Bluetooth keyboard. Ctrl stands in

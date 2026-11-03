@@ -14,7 +14,7 @@ connected.
    *"Photo copied · drag it from the bar"*. It's also on the Windows
    clipboard: **Ctrl+V** into Explorer, a chat or an email works too, and a
    photo pastes as a picture into Paint, Word and the like.
-3. Point at the window and **drag the blue chip** on the bar onto the
+3. Point at the window and **drag the chip** on the bar onto the
    desktop, into a folder, or into any app that takes files.
 
 Files keep their names (`Invoice.pdf` stays `Invoice.pdf`); photos are named

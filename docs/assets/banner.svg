@@ -1,141 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="440" viewBox="0 0 1280 440" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="440" viewBox="0 0 1280 440" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" role="img">
+  <title>Mirrorly: your iPhone on your Windows PC</title>
+  <style>
+    :root { --bg1:#FBFCFD; --bg2:#E9EFF3; --card:#FFFFFF; --cardline:#D3DCE2; --ink:#20272D; --soft:#56646F; --faint:#66757F; --accent:#2F6F88; --ice:#8DC2D6; --onice:#14191D; --tint:#E1F1F7; --tintline:#8DC2D6; --deep:#37525F; --ondeep:#E4F5FA; --line:#5F8FA3; --hair:#2C3339; --hairop:0.09; --frame:#C9D3DA; --bar:#E4EAEE; --baricon:#2C3339; --barline:#BFCAD2; --badge:#2C3339; --onbadge:#F3F6F8; --desk1:#DCE4E9; --desk2:#CDD7DE; --deskitem:#2C3339; --deskop:0.14; --device:#2C3339; --deviceline:#576774; --chartphone:#576774; --onchart:#F3F6F8; --chartpc:#8DC2D6; --stage:#4F8CA6; --glow:#8DC2D6; --glowop:0.34; --mbody:#2E383F; --mring:#23282E; --mleft:#576774; --mice:#8DC2D6; --mright:#37525F; --mplay:#D2EDF5; --mmirror:#2C3339; --mly:#7FB6CA; }
+    @media (prefers-color-scheme: dark) { :root { --bg1:#14181C; --bg2:#1E252B; --card:#232A30; --cardline:#3A464F; --ink:#E9F0F4; --soft:#A3B3BE; --faint:#8A9BA7; --accent:#8DC2D6; --ice:#8DC2D6; --onice:#14191D; --tint:#22343E; --tintline:#4F7A8D; --deep:#37525F; --ondeep:#E4F5FA; --line:#8DC2D6; --hair:#FFFFFF; --hairop:0.06; --frame:#1A1F24; --bar:#262D33; --baricon:#E9F0F4; --barline:#0E1114; --badge:#E9F0F4; --onbadge:#14191D; --desk1:#232A30; --desk2:#1A1F24; --deskitem:#FFFFFF; --deskop:0.11; --device:#0E1114; --deviceline:#3A464F; --chartphone:#66788A; --onchart:#FFFFFF; --chartpc:#8DC2D6; --stage:#8DC2D6; --glow:#8DC2D6; --glowop:0.16; --mbody:#66788A; --mring:#3D4954; --mleft:#8FA2B0; --mice:#8DC2D6; --mright:#37525F; --mplay:#E4F5FA; --mmirror:#E9F0F4; --mly:#8DC2D6; } }
+  </style>
   <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2F80FF"/>
-      <stop offset="1" stop-color="#7B4DF2"/>
-    </linearGradient>
-    <radialGradient id="glowA" cx="0.18" cy="0.1" r="0.7">
-      <stop offset="0" stop-color="#3B5BFF" stop-opacity="0.45"/>
-      <stop offset="1" stop-color="#3B5BFF" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="glowB" cx="0.85" cy="0.95" r="0.6">
-      <stop offset="0" stop-color="#8B4DF2" stop-opacity="0.40"/>
-      <stop offset="1" stop-color="#8B4DF2" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="wall" x1="0" y1="0" x2="0.6" y2="1">
-      <stop offset="0" stop-color="#1E3A8A"/>
-      <stop offset="0.55" stop-color="#6D28D9"/>
-      <stop offset="1" stop-color="#DB2777"/>
-    </linearGradient>
-    <linearGradient id="desk" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1A2140"/>
-      <stop offset="1" stop-color="#121730"/>
-    </linearGradient>
-    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity="0.55"/>
-    </filter>
-    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.45"/>
-    </filter>
-    <clipPath id="screen"><rect x="905" y="96" width="160" height="300" rx="26"/></clipPath>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--bg1)"/><stop offset="1" stop-color="var(--bg2)"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--line)"/></marker>
+<linearGradient id="wall" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#23282E"/><stop offset="0.5" stop-color="#37525F"/><stop offset="1" stop-color="#8DC2D6"/></linearGradient>
+<filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#0B0E11" flood-opacity="0.30"/></filter>
+<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#0B0E11" flood-opacity="0.28"/></filter>
+<radialGradient id="glow" cx="0.82" cy="0.5" r="0.62"><stop offset="0" stop-color="var(--glow)" stop-opacity="var(--glowop)"/><stop offset="1" stop-color="var(--glow)" stop-opacity="0"/></radialGradient>
+<linearGradient id="desk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--desk1)"/><stop offset="1" stop-color="var(--desk2)"/></linearGradient>
+<clipPath id="screen"><rect x="905" y="96" width="160" height="300" rx="26"/></clipPath>
   </defs>
-
-  <!-- Background -->
-  <rect width="1280" height="440" rx="28" fill="#0A0F24"/>
-  <rect width="1280" height="440" rx="28" fill="url(#glowA)"/>
-  <rect width="1280" height="440" rx="28" fill="url(#glowB)"/>
-  <g stroke="#FFFFFF" stroke-opacity="0.035">
-    <path d="M0 110H1280M0 220H1280M0 330H1280M160 0V440M320 0V440M480 0V440M640 0V440M800 0V440M960 0V440M1120 0V440"/>
-  </g>
-
-  <!-- App tile -->
-  <g transform="translate(72 74)" filter="url(#soft)">
-    <rect width="92" height="92" rx="22" fill="url(#tile)"/>
-    <rect x="30" y="14" width="32" height="64" rx="8" fill="none" stroke="#fff" stroke-width="5"/>
-    <rect x="40" y="20" width="12" height="4" rx="2" fill="#fff"/>
-    <path d="M51 36 L38 62 L44 62 L55 40 Z" fill="#fff" fill-opacity="0.55"/>
-  </g>
-
-  <!-- Wordmark -->
-  <text x="72" y="236" fill="#FFFFFF" font-size="76" font-weight="700" letter-spacing="-1.5">Mirrorly</text>
-  <text x="74" y="284" fill="#C3CBEA" font-size="25">Your iPhone on your Windows PC.</text>
-  <text x="74" y="318" fill="#8E98C2" font-size="20">See it, control it, and drag files in and out, with almost no delay.</text>
-
-  <!-- Feature pills -->
-  <g font-size="15" font-weight="600" fill="#DCE3FF">
-    <rect x="72" y="350" width="74" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.14"/>
-    <text x="109" y="372" text-anchor="middle">USB</text>
-    <rect x="156" y="350" width="82" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.14"/>
-    <text x="197" y="372" text-anchor="middle">Wi-Fi</text>
-    <rect x="248" y="350" width="132" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.14"/>
-    <text x="314" y="372" text-anchor="middle">Drag &amp; drop</text>
-    <rect x="390" y="350" width="176" height="34" rx="17" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.14"/>
-    <text x="478" y="372" text-anchor="middle">Mouse &amp; keyboard</text>
-    <rect x="576" y="350" width="150" height="34" rx="17" fill="#2F80FF" fill-opacity="0.22" stroke="#5B8CFF" stroke-opacity="0.6"/>
-    <text x="651" y="372" text-anchor="middle" fill="#BFD3FF">~1 ms on the PC</text>
-  </g>
-
-  <!-- Desktop card -->
-  <g filter="url(#shadow)">
-    <rect x="770" y="30" width="460" height="390" rx="18" fill="url(#desk)" stroke="#FFFFFF" stroke-opacity="0.08"/>
-  </g>
-  <!-- desktop icons -->
-  <g fill="#FFFFFF" fill-opacity="0.10">
-    <rect x="796" y="66" width="34" height="40" rx="5"/>
-    <rect x="796" y="128" width="34" height="40" rx="5"/>
-    <rect x="796" y="190" width="34" height="40" rx="5"/>
-  </g>
-  <g fill="#FFFFFF" fill-opacity="0.18">
-    <rect x="796" y="110" width="34" height="5" rx="2.5"/>
-    <rect x="796" y="172" width="34" height="5" rx="2.5"/>
-    <rect x="796" y="234" width="34" height="5" rx="2.5"/>
-  </g>
-  <!-- Mirrorly window: bar above the phone screen -->
-  <g filter="url(#soft)">
-    <rect x="895" y="56" width="180" height="350" rx="30" fill="#1D1D22"/>
-  </g>
-  <rect x="895" y="56" width="180" height="34" rx="14" fill="#28282C"/>
-  <rect x="895" y="74" width="180" height="16" fill="#28282C"/>
-  <circle cx="912" cy="73" r="5" fill="#FF5F57"/>
-  <circle cx="928" cy="73" r="5" fill="#FEBC2E"/>
-  <circle cx="944" cy="73" r="5" fill="#28C840"/>
-  <rect x="960" y="63" width="66" height="20" rx="10" fill="#4C61FA"/>
-  <text x="993" y="77.5" text-anchor="middle" font-size="10.5" font-weight="600" fill="#fff">3 photos</text>
-  <g fill="#FFFFFF" fill-opacity="0.85">
-    <rect x="1036" y="68" width="10" height="10" rx="2" fill="none" stroke="#fff" stroke-opacity="0.85" stroke-width="1.6"/>
-    <path d="M1056 78v-6l5-4 5 4v6z" fill="none" stroke="#fff" stroke-opacity="0.85" stroke-width="1.6" stroke-linejoin="round"/>
-  </g>
-
-  <!-- phone screen -->
-  <g clip-path="url(#screen)">
-    <rect x="905" y="96" width="160" height="300" fill="url(#wall)"/>
-    <text x="985" y="128" text-anchor="middle" font-size="12" font-weight="600" fill="#fff" fill-opacity="0.9">9:41</text>
-    <g>
-      <rect x="921" y="146" width="28" height="28" rx="7" fill="#34C759"/>
-      <rect x="957" y="146" width="28" height="28" rx="7" fill="#FFFFFF"/>
-      <rect x="993" y="146" width="28" height="28" rx="7" fill="#FF9500"/>
-      <rect x="1029" y="146" width="28" height="28" rx="7" fill="#0A84FF"/>
-      <rect x="921" y="188" width="28" height="28" rx="7" fill="#FF375F"/>
-      <rect x="957" y="188" width="28" height="28" rx="7" fill="#5E5CE6"/>
-      <rect x="993" y="188" width="28" height="28" rx="7" fill="#FFD60A"/>
-      <rect x="1029" y="188" width="28" height="28" rx="7" fill="#1C1C1E"/>
-      <rect x="921" y="230" width="28" height="28" rx="7" fill="#64D2FF"/>
-      <rect x="957" y="230" width="28" height="28" rx="7" fill="#30D158"/>
-      <rect x="993" y="230" width="28" height="28" rx="7" fill="#BF5AF2"/>
-      <rect x="1029" y="230" width="28" height="28" rx="7" fill="#FF9F0A"/>
-    </g>
-    <rect x="917" y="340" width="136" height="44" rx="16" fill="#FFFFFF" fill-opacity="0.22"/>
-    <rect x="929" y="350" width="24" height="24" rx="6" fill="#34C759"/>
-    <rect x="961" y="350" width="24" height="24" rx="6" fill="#0A84FF"/>
-    <rect x="993" y="350" width="24" height="24" rx="6" fill="#FFFFFF"/>
-    <rect x="1025" y="350" width="24" height="24" rx="6" fill="#FF9500"/>
-    <rect x="955" y="388" width="60" height="4" rx="2" fill="#fff" fill-opacity="0.85"/>
-  </g>
-  <rect x="905" y="96" width="160" height="300" rx="26" fill="none" stroke="#000" stroke-opacity="0.4"/>
-
-  <!-- tap indicator -->
-  <circle cx="1043" cy="160" r="13" fill="#FFFFFF" fill-opacity="0.35" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width="2"/>
-
-  <!-- dragged files leaving the window -->
-  <path d="M1004 88 C 1060 40, 1130 60, 1150 128" fill="none" stroke="#8FA8FF" stroke-width="2.4" stroke-dasharray="6 6" stroke-linecap="round"/>
-  <g transform="translate(1124 128)" filter="url(#soft)">
-    <rect x="10" y="-6" width="46" height="58" rx="6" fill="#E9EDFF" transform="rotate(8 33 23)"/>
-    <rect x="0" y="0" width="46" height="58" rx="6" fill="#FFFFFF"/>
-    <rect x="6" y="6" width="34" height="30" rx="3" fill="#7DA2FF"/>
-    <path d="M9 32 L19 20 L26 27 L31 22 L37 32 Z" fill="#2E5BD8"/>
-    <circle cx="31" cy="13" r="3.5" fill="#FFE27A"/>
-    <rect x="8" y="42" width="30" height="4" rx="2" fill="#C5CDE8"/>
-  </g>
-  <!-- cursor -->
-  <path d="M1168 178 l0 26 l7 -6 l5 11 l5 -2 l-5 -11 l9 0 z" fill="#FFFFFF" stroke="#0A0F24" stroke-width="1.4" stroke-linejoin="round"/>
+  <rect width="1280" height="440" rx="24" fill="url(#bg)" stroke="var(--cardline)"/>
+<rect width="1280" height="440" rx="24" fill="url(#glow)"/><path d="M0 110H1280M0 220H1280M0 330H1280M160 0V440M320 0V440M480 0V440M640 0V440M800 0V440M960 0V440M1120 0V440" stroke="var(--hair)" stroke-opacity="var(--hairop)"/>
+<svg x="72" y="72" width="452" height="111.3" viewBox="97 127 2003 493"><path fill="var(--mbody)" d="M105.0 224.1A84 84 0 0 1 228.1 149.8L511.2 298.7A84 84 0 0 1 511.2 447.3L228.1 596.2A84 84 0 0 1 105.0 521.9Z"/><path fill="var(--mring)" d="M151.0 253.9A56 56 0 0 1 233.1 204.3L459.5 323.4A56 56 0 0 1 459.5 422.6L233.1 541.7A56 56 0 0 1 151.0 492.1Z"/><path fill="var(--mleft)" d="M166.0 255.6A42 42 0 0 1 227.6 218.4L450.8 335.8A42 42 0 0 1 450.8 410.2L227.6 527.6A42 42 0 0 1 166.0 490.4Z"/><path fill="var(--mice)" d="M591.0 153.8A84 84 0 0 1 716.0 227.1L716.0 519.6A84 84 0 0 1 604.0 598.8L350.6 509.1A1 1 0 0 1 349.9 508.2L330.1 300.3A1 1 0 0 1 330.6 299.4Z"/><path fill="var(--mright)" d="M599.5 207.5A44 44 0 0 1 665.0 245.9L665.0 504.0A44 44 0 0 1 606.3 545.5L362.7 459.3A1 1 0 0 1 362.0 458.3L362.0 340.8A1 1 0 0 1 362.5 340.0Z"/><path fill="var(--mplay)" d="M299.0 345.3A38 38 0 0 1 354.9 311.7L494.9 386.3A32 32 0 0 1 494.9 442.7L354.9 517.3A38 38 0 0 1 299.0 483.7Z"/><path fill="var(--mmirror)" d="M1542.3 498.6C1507.9 492.0 1480.4 470.3 1468.2 439.9C1464.5 430.8 1463.1 424.2 1462.0 410.7C1457.8 359.0 1486.8 318.2 1537.6 304.4C1555.5 299.5 1585.5 300.7 1603.3 307.0C1645.5 321.8 1670.0 356.0 1670.0 400.1C1670.0 446.4 1640.1 484.7 1594.5 496.6C1582.2 499.9 1554.5 500.9 1542.3 498.6ZM1685.9 494.2C1682.9 491.5 1682.9 491.5 1683.0 401.5C1683.1 311.5 1683.1 311.5 1685.6 309.0C1688.1 306.5 1688.1 306.5 1707.8 306.8C1730.9 307.1 1731.5 307.4 1732.7 316.9C1733.5 323.9 1734.9 324.2 1741.7 318.2C1752.7 308.8 1760.9 305.0 1775.1 303.0C1784.8 301.6 1792.7 303.1 1796.2 307.0C1799.0 310.0 1799.0 310.2 1798.9 322.8C1798.8 349.0 1797.5 351.3 1781.7 352.4C1763.9 353.6 1754.7 358.0 1746.5 369.1C1737.7 381.1 1737.6 381.3 1737.0 439.5C1736.5 492.9 1736.4 493.6 1732.0 496.0C1730.9 496.6 1721.7 497.0 1709.6 497.0C1689.0 497.0 1689.0 497.0 1685.9 494.2ZM819.2 494.0C817.4 492.9 815.1 490.6 814.0 488.8C812.0 485.6 812.0 483.5 812.0 368.3C812.0 288.1 812.3 250.2 813.1 248.3C814.6 244.1 819.9 239.1 824.0 238.0C829.9 236.3 857.8 236.8 864.0 238.6C875.4 242.0 879.0 245.6 891.4 266.5C906.0 290.9 914.4 305.0 920.0 314.0C922.9 318.7 928.5 327.9 932.3 334.5C936.2 341.1 941.0 349.2 943.0 352.5C945.1 355.8 950.3 364.7 954.6 372.2C959.5 380.8 963.1 386.0 964.1 386.0C965.1 386.0 968.6 381.1 973.5 372.8C981.5 359.1 996.0 334.7 1006.0 318.0C1009.2 312.8 1015.7 301.8 1020.6 293.5C1047.1 248.4 1049.1 245.5 1058.4 240.7C1064.4 237.6 1064.6 237.5 1081.4 237.2C1100.4 236.8 1104.9 237.7 1109.4 243.1C1114.1 248.6 1114.1 247.8 1113.8 369.2C1113.5 482.5 1113.5 484.6 1111.5 487.9C1107.2 495.2 1106.1 495.5 1084.5 495.5C1066.5 495.5 1064.9 495.4 1062.3 493.4C1055.7 488.6 1056.0 492.2 1056.0 411.2C1056.0 367.1 1055.6 338.0 1055.1 338.0C1054.6 338.0 1052.8 340.4 1051.2 343.2C1043.1 357.9 993.3 444.2 990.5 448.5C985.9 455.7 979.2 461.4 973.0 463.5C961.5 467.3 947.1 463.6 939.6 454.9C937.9 452.8 930.0 439.8 922.0 425.8C914.1 411.9 902.6 391.7 896.4 381.0C890.3 370.3 882.5 356.4 879.0 350.2C875.6 344.1 872.4 339.0 872.0 339.0C870.5 339.0 870.0 359.5 870.0 421.5C870.0 485.7 870.0 485.7 867.7 489.1C863.6 495.3 860.8 496.0 840.5 496.0C824.3 496.0 822.2 495.8 819.2 494.0ZM1145.8 494.5C1144.3 493.6 1142.6 492.1 1142.0 491.0C1141.3 489.8 1141.0 459.0 1141.0 400.0C1141.0 310.9 1141.0 310.9 1143.5 308.5C1145.9 306.0 1145.9 306.0 1168.5 306.0C1191.1 306.0 1191.1 306.0 1193.5 308.5C1196.0 310.9 1196.0 310.9 1196.0 399.9C1196.0 489.0 1196.0 489.0 1193.1 492.2C1190.2 495.5 1190.2 495.5 1169.3 495.7C1152.3 495.9 1148.0 495.7 1145.8 494.5ZM1223.8 493.1C1220.5 490.2 1220.5 490.2 1220.2 401.0C1219.9 311.9 1219.9 311.9 1222.9 308.9C1226.0 305.9 1226.0 305.9 1244.9 306.2C1267.6 306.6 1268.3 306.9 1269.5 317.1C1269.9 320.5 1270.7 323.0 1271.3 323.0C1272.0 323.0 1275.1 320.7 1278.3 318.0C1291.6 306.6 1302.6 302.7 1319.1 303.2C1330.2 303.5 1330.2 303.5 1333.1 306.8C1336.0 310.0 1336.0 310.0 1336.0 326.9C1336.0 349.6 1335.2 350.6 1317.6 352.0C1304.1 353.1 1297.6 355.7 1289.9 362.7C1283.0 369.1 1279.6 374.4 1276.8 383.3C1274.9 389.1 1274.7 392.8 1274.3 439.5C1273.8 493.6 1273.9 493.0 1268.4 495.0C1267.0 495.6 1257.1 496.0 1246.5 496.0C1227.0 496.0 1227.0 496.0 1223.8 493.1ZM1355.3 495.0C1349.7 492.7 1349.9 497.1 1350.2 400.2C1350.5 311.2 1350.5 311.2 1352.9 308.6C1355.3 306.0 1355.3 306.0 1374.8 306.0C1394.2 306.0 1394.2 306.0 1397.1 308.9C1399.6 311.4 1400.0 312.6 1400.0 317.2C1400.0 326.0 1400.9 326.2 1408.5 319.2C1421.3 307.2 1432.3 302.8 1449.2 302.9C1467.7 303.0 1468.2 303.7 1467.8 327.6C1467.5 345.2 1467.5 345.2 1464.4 347.9C1461.6 350.4 1460.3 350.8 1451.1 351.4C1433.7 352.6 1422.6 357.5 1414.8 367.4C1404.6 380.3 1404.7 379.5 1404.1 439.3C1403.5 491.2 1403.5 491.2 1400.7 493.6C1397.9 496.0 1397.6 496.0 1377.7 495.9C1366.6 495.9 1356.5 495.5 1355.3 495.0ZM1579.1 447.4C1616.4 436.3 1627.7 389.9 1599.3 364.0C1589.8 355.3 1579.7 351.7 1564.9 351.7C1544.6 351.8 1528.9 361.7 1520.1 380.0C1516.5 387.4 1516.5 387.6 1516.5 400.5C1516.5 415.5 1518.0 419.9 1526.6 431.1C1538.0 446.0 1560.5 452.9 1579.1 447.4ZM1159.0 288.1C1136.2 280.7 1128.5 253.7 1144.2 236.5C1151.9 228.1 1158.1 225.5 1170.5 225.5C1182.1 225.6 1186.6 227.1 1194.2 233.9C1211.0 248.9 1206.5 275.8 1185.4 286.1C1180.2 288.6 1164.3 289.8 1159.0 288.1Z"/><path fill="var(--mly)" d="M1894.9 578.1C1884.7 577.0 1884.6 576.4 1889.1 552.7C1893.1 532.1 1893.9 531.0 1905.8 531.0C1928.3 531.0 1938.4 525.0 1949.0 505.3C1956.0 492.4 1956.0 492.4 1950.2 479.0C1947.4 472.7 1939.3 453.6 1932.0 436.5C1924.7 419.4 1916.5 400.3 1913.8 394.0C1895.6 351.8 1881.0 315.6 1881.0 312.6C1881.0 310.7 1881.9 308.2 1882.9 306.9C1884.8 304.5 1885.1 304.5 1907.2 304.2C1938.6 303.7 1938.0 303.4 1945.4 322.5C1948.0 329.1 1952.3 339.9 1955.0 346.5C1957.7 353.1 1960.8 361.0 1961.9 364.0C1966.3 376.5 1984.9 423.3 1985.8 424.2C1987.2 425.6 1987.2 425.4 2002.7 384.5C2008.7 368.8 2013.0 357.7 2017.5 346.0C2019.6 340.8 2023.5 330.2 2026.4 322.6C2033.6 303.2 2031.0 304.5 2062.0 304.5C2094.4 304.5 2095.3 305.2 2087.8 323.1C2085.8 327.7 2080.7 339.6 2076.5 349.5C2072.2 359.4 2065.0 376.3 2060.5 387.0C2048.9 414.6 2034.9 447.0 2027.3 464.0C2023.7 472.0 2017.8 485.2 2014.3 493.5C1994.2 539.7 1986.0 552.6 1969.0 564.2C1951.5 576.2 1924.2 581.3 1894.9 578.1ZM1833.8 496.3C1816.1 496.0 1816.1 496.0 1814.1 493.3C1812.0 490.7 1812.0 490.4 1812.0 362.3C1812.0 233.9 1812.0 233.9 1814.5 231.5C1816.9 229.0 1816.9 229.0 1839.5 229.0C1862.1 229.0 1862.1 229.0 1864.5 231.5C1867.0 233.9 1867.0 233.9 1867.0 362.1C1867.0 490.2 1867.0 490.2 1863.6 493.6C1860.7 496.5 1859.6 497.0 1855.8 496.8C1853.5 496.7 1843.5 496.4 1833.8 496.3Z"/></svg>
+<text x="74" y="244" font-size="31" font-weight="600" fill="var(--ink)">Your iPhone on your Windows PC.</text>
+<text x="75" y="282" font-size="20" fill="var(--soft)">See it, control it, and drag files in and out, with almost no delay.</text>
+<rect x="72" y="318" width="74" height="36" rx="18" fill="var(--card)" stroke="var(--cardline)"/><text x="109.0" y="341" font-size="15" font-weight="600" text-anchor="middle" fill="var(--ink)">USB</text>
+<rect x="156" y="318" width="82" height="36" rx="18" fill="var(--card)" stroke="var(--cardline)"/><text x="197.0" y="341" font-size="15" font-weight="600" text-anchor="middle" fill="var(--ink)">Wi-Fi</text>
+<rect x="248" y="318" width="132" height="36" rx="18" fill="var(--card)" stroke="var(--cardline)"/><text x="314.0" y="341" font-size="15" font-weight="600" text-anchor="middle" fill="var(--ink)">Drag &amp; drop</text>
+<rect x="390" y="318" width="176" height="36" rx="18" fill="var(--card)" stroke="var(--cardline)"/><text x="478.0" y="341" font-size="15" font-weight="600" text-anchor="middle" fill="var(--ink)">Mouse &amp; keyboard</text>
+<rect x="576" y="318" width="154" height="36" rx="18" fill="var(--ice)"/><text x="653" y="341" font-size="15" font-weight="700" text-anchor="middle" fill="var(--onice)">~1 ms on the PC</text>
+<g filter="url(#shadow)"><rect x="770" y="30" width="460" height="380" rx="18" fill="url(#desk)" stroke="var(--cardline)"/></g>
+<g fill="var(--deskitem)" fill-opacity="var(--deskop)"><rect x="796" y="66" width="34" height="40" rx="5"/><rect x="796" y="110" width="34" height="5" rx="2.5"/></g><g fill="var(--deskitem)" fill-opacity="var(--deskop)"><rect x="796" y="128" width="34" height="40" rx="5"/><rect x="796" y="172" width="34" height="5" rx="2.5"/></g><g fill="var(--deskitem)" fill-opacity="var(--deskop)"><rect x="796" y="190" width="34" height="40" rx="5"/><rect x="796" y="234" width="34" height="5" rx="2.5"/></g>
+<g filter="url(#soft)"><rect x="895" y="60" width="180" height="340" rx="30" fill="var(--frame)" stroke="var(--cardline)"/></g>
+<path d="M895 90 V70 a14 14 0 0 1 14 -14 h152 a14 14 0 0 1 14 14 V90 z" fill="var(--bar)"/><circle cx="912" cy="73" r="5" fill="#FF5F57"/><circle cx="928" cy="73" r="5" fill="#FEBC2E"/><circle cx="944" cy="73" r="5" fill="#28C840"/><rect x="958" y="63" width="66" height="20" rx="10" fill="var(--ice)"/><text x="991" y="77.5" font-size="10.5" font-weight="700" text-anchor="middle" fill="var(--onice)">3 photos</text><g transform="translate(1041 73) scale(0.8)"><g fill="none" stroke="var(--baricon)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="-7" y="-6.5" width="9" height="13" rx="2"/><rect x="4" y="-4.5" width="4" height="9" rx="1.5"/></g></g><g transform="translate(1060 73) scale(0.8)"><g fill="none" stroke="var(--baricon)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M-6.5 6.5 v-7 l6.5 -6 l6.5 6 v7 z"/></g></g>
+<g clip-path="url(#screen)"><rect x="905" y="96" width="160" height="300" fill="url(#wall)"/><text x="985" y="124" text-anchor="middle" font-size="12" font-weight="600" fill="#fff" fill-opacity="0.95">9:41</text><rect x="921" y="146" width="28" height="28" rx="7" fill="#D2EDF5"/><rect x="957" y="146" width="28" height="28" rx="7" fill="#FFFFFF"/><rect x="993" y="146" width="28" height="28" rx="7" fill="#8DC2D6"/><rect x="1029" y="146" width="28" height="28" rx="7" fill="#66788A"/><rect x="921" y="188" width="28" height="28" rx="7" fill="#7FB6CA"/><rect x="957" y="188" width="28" height="28" rx="7" fill="#E9F0F4"/><rect x="993" y="188" width="28" height="28" rx="7" fill="#A9D3E2"/><rect x="1029" y="188" width="28" height="28" rx="7" fill="#2C3339"/><rect x="921" y="230" width="28" height="28" rx="7" fill="#D2EDF5"/><rect x="957" y="230" width="28" height="28" rx="7" fill="#8FA2B0"/><rect x="993" y="230" width="28" height="28" rx="7" fill="#FFFFFF"/><rect x="1029" y="230" width="28" height="28" rx="7" fill="#8DC2D6"/><rect x="917" y="340" width="136" height="44" rx="16" fill="#FFFFFF" fill-opacity="0.28"/><rect x="929" y="350" width="24" height="24" rx="6" fill="#8DC2D6"/><rect x="961" y="350" width="24" height="24" rx="6" fill="#D2EDF5"/><rect x="993" y="350" width="24" height="24" rx="6" fill="#FFFFFF"/><rect x="1025" y="350" width="24" height="24" rx="6" fill="#66788A"/><rect x="955" y="388" width="60" height="4" rx="2" fill="#fff" fill-opacity="0.9"/></g>
+<circle cx="1043" cy="160" r="13" fill="#FFFFFF" fill-opacity="0.35" stroke="#FFFFFF" stroke-opacity="0.95" stroke-width="2"/>
+<path d="M1004 56 C 1060 26, 1130 48, 1150 120" fill="none" stroke="var(--line)" stroke-width="2.4" stroke-dasharray="6 6" stroke-linecap="round"/>
+<g transform="translate(1124 128)" filter="url(#soft)"><rect x="10" y="-6" width="46" height="58" rx="6" fill="#D2EDF5" transform="rotate(8 33 23)"/><rect width="46" height="58" rx="6" fill="#FFFFFF"/><rect x="6" y="6" width="34" height="30" rx="3" fill="#8DC2D6"/><path d="M9 32 L19 20 L26 27 L31 22 L37 32 Z" fill="#37525F"/><circle cx="31" cy="13" r="3.5" fill="#E4F5FA"/><rect x="8" y="42" width="30" height="4" rx="2" fill="#C9D3DA"/></g>
+<path d="M1168 178 l0 26 l7 -6 l5 11 l5 -2 l-5 -11 l9 0 z" fill="#FFFFFF" stroke="#14181C" stroke-width="1.4" stroke-linejoin="round"/>
 </svg>

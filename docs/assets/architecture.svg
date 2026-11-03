@@ -1,87 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="440" viewBox="0 0 960 440" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="440" viewBox="0 0 960 440" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" role="img">
+  <title>How Mirrorly's threads connect to the iPhone</title>
+  <style>
+    :root { --bg1:#FBFCFD; --bg2:#E9EFF3; --card:#FFFFFF; --cardline:#D3DCE2; --ink:#20272D; --soft:#56646F; --faint:#66757F; --accent:#2F6F88; --ice:#8DC2D6; --onice:#14191D; --tint:#E1F1F7; --tintline:#8DC2D6; --deep:#37525F; --ondeep:#E4F5FA; --line:#5F8FA3; --hair:#2C3339; --hairop:0.09; --frame:#C9D3DA; --bar:#E4EAEE; --baricon:#2C3339; --barline:#BFCAD2; --badge:#2C3339; --onbadge:#F3F6F8; --desk1:#DCE4E9; --desk2:#CDD7DE; --deskitem:#2C3339; --deskop:0.14; --device:#2C3339; --deviceline:#576774; --chartphone:#576774; --onchart:#F3F6F8; --chartpc:#8DC2D6; --stage:#4F8CA6; --glow:#8DC2D6; --glowop:0.34; --mbody:#2E383F; --mring:#23282E; --mleft:#576774; --mice:#8DC2D6; --mright:#37525F; --mplay:#D2EDF5; --mmirror:#2C3339; --mly:#7FB6CA; }
+    @media (prefers-color-scheme: dark) { :root { --bg1:#14181C; --bg2:#1E252B; --card:#232A30; --cardline:#3A464F; --ink:#E9F0F4; --soft:#A3B3BE; --faint:#8A9BA7; --accent:#8DC2D6; --ice:#8DC2D6; --onice:#14191D; --tint:#22343E; --tintline:#4F7A8D; --deep:#37525F; --ondeep:#E4F5FA; --line:#8DC2D6; --hair:#FFFFFF; --hairop:0.06; --frame:#1A1F24; --bar:#262D33; --baricon:#E9F0F4; --barline:#0E1114; --badge:#E9F0F4; --onbadge:#14191D; --desk1:#232A30; --desk2:#1A1F24; --deskitem:#FFFFFF; --deskop:0.11; --device:#0E1114; --deviceline:#3A464F; --chartphone:#66788A; --onchart:#FFFFFF; --chartpc:#8DC2D6; --stage:#8DC2D6; --glow:#8DC2D6; --glowop:0.16; --mbody:#66788A; --mring:#3D4954; --mleft:#8FA2B0; --mice:#8DC2D6; --mright:#37525F; --mplay:#E4F5FA; --mmirror:#E9F0F4; --mly:#8DC2D6; } }
+  </style>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0D1226"/>
-      <stop offset="1" stop-color="#141a35"/>
-    </linearGradient>
-    <linearGradient id="tunnel" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2F80FF" stop-opacity="0.35"/>
-      <stop offset="1" stop-color="#7B4DF2" stop-opacity="0.35"/>
-    </linearGradient>
-    <marker id="a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="#9AACF0"/>
-    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--bg1)"/><stop offset="1" stop-color="var(--bg2)"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--line)"/></marker>
   </defs>
-
-  <rect width="960" height="440" rx="24" fill="url(#bg)"/>
-
-  <!-- iPhone -->
-  <rect x="32" y="52" width="232" height="356" rx="20" fill="#FFFFFF" fill-opacity="0.04" stroke="#FFFFFF" stroke-opacity="0.12"/>
-  <text x="52" y="84" font-size="12" font-weight="700" letter-spacing="1.6" fill="#7C8BC9">IPHONE</text>
-  <g font-size="12.5">
-    <rect x="52" y="102" width="192" height="78" rx="12" fill="#1E2546" stroke="#3A4680"/>
-    <text x="68" y="132" font-size="15" font-weight="600" fill="#fff">Screen</text>
-    <text x="68" y="154" fill="#A3ADD6">displayservice · HEVC video</text>
-
-    <rect x="52" y="200" width="192" height="78" rx="12" fill="#1E2546" stroke="#3A4680"/>
-    <text x="68" y="230" font-size="15" font-weight="600" fill="#fff">Input</text>
-    <text x="68" y="252" fill="#A3ADD6">touch · keys · buttons (HID)</text>
-
-    <rect x="52" y="298" width="192" height="78" rx="12" fill="#1E2546" stroke="#3A4680"/>
-    <text x="68" y="328" font-size="15" font-weight="600" fill="#fff">Clipboard and files</text>
-    <text x="68" y="350" fill="#A3ADD6">pasteboard · house_arrest</text>
-  </g>
-
-  <!-- Tunnel -->
-  <rect x="288" y="52" width="34" height="356" rx="17" fill="url(#tunnel)" stroke="#6F83FF" stroke-opacity="0.5"/>
-  <text transform="translate(310 230) rotate(-90)" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.2" fill="#DCE3FF">USB  ·  WI-FI TUNNEL</text>
-
-  <!-- Mirrorly -->
-  <rect x="346" y="52" width="582" height="356" rx="20" fill="#4C61FA" fill-opacity="0.07" stroke="#6F83FF" stroke-opacity="0.45"/>
-  <text x="366" y="84" font-size="12" font-weight="700" letter-spacing="1.6" fill="#9DB0FF">MIRRORLY ON WINDOWS · 4 THREADS</text>
-  <g font-size="12.5">
-    <rect x="366" y="102" width="168" height="274" rx="12" fill="#232B55" stroke="#5566C9"/>
-    <text x="382" y="132" font-size="15" font-weight="600" fill="#fff">network</text>
-    <text x="382" y="154" fill="#B9C3EE">tunnel · RTP · RTCP</text>
-    <text x="382" y="174" fill="#B9C3EE">input sender</text>
-    <text x="382" y="194" fill="#B9C3EE">clipboard bridge</text>
-    <text x="382" y="214" fill="#B9C3EE">USB / Wi-Fi switching</text>
-
-    <rect x="580" y="102" width="150" height="78" rx="12" fill="#232B55" stroke="#5566C9"/>
-    <text x="596" y="132" font-size="15" font-weight="600" fill="#fff">decode</text>
-    <text x="596" y="154" fill="#B9C3EE">FFmpeg d3d11va</text>
-
-    <rect x="760" y="102" width="150" height="78" rx="12" fill="#232B55" stroke="#5566C9"/>
-    <text x="776" y="132" font-size="15" font-weight="600" fill="#fff">present</text>
-    <text x="776" y="154" fill="#B9C3EE">flip-model swapchain</text>
-
-    <rect x="580" y="298" width="330" height="78" rx="12" fill="#232B55" stroke="#5566C9"/>
-    <text x="596" y="328" font-size="15" font-weight="600" fill="#fff">main</text>
-    <text x="596" y="350" fill="#B9C3EE">window · mouse and keyboard · drag and drop</text>
-  </g>
-
-  <!-- note -->
-  <g font-size="13" fill="#8E98C2">
-    <text x="580" y="232">Video and input travel separately:</text>
-    <text x="580" y="252">a click never waits behind a frame.</text>
-  </g>
-
-  <!-- Arrows -->
-  <g stroke="#9AACF0" stroke-width="2" fill="none">
-    <path d="M244 141 H362" marker-end="url(#a)"/>
-    <path d="M362 239 H248" marker-end="url(#a)"/>
-    <path d="M248 337 H362" marker-start="url(#a)" marker-end="url(#a)"/>
-    <path d="M534 141 H576" marker-end="url(#a)"/>
-    <path d="M730 141 H756" marker-end="url(#a)"/>
-    <path d="M580 337 H538" marker-end="url(#a)"/>
-    <path d="M835 180 V206" marker-end="url(#a)"/>
-  </g>
-  <g font-size="11.5" font-weight="600" fill="#C9D3FF" text-anchor="middle">
-    <text x="266" y="132">video</text>
-    <text x="266" y="230">touch</text>
-    <text x="266" y="328">files</text>
-    <text x="557" y="132">frames</text>
-    <text x="557" y="328">input</text>
-  </g>
-  <text x="835" y="224" text-anchor="middle" font-size="12.5" fill="#6EE7B7" font-weight="600">your screen</text>
+  <rect width="960" height="440" rx="24" fill="url(#bg)" stroke="var(--cardline)"/>
+<rect x="32" y="52" width="232" height="356" rx="20" fill="var(--hair)" fill-opacity="var(--hairop)" stroke="var(--cardline)"/><text x="52" y="84" font-size="12" font-weight="700" letter-spacing="1.4" fill="var(--accent)">IPHONE</text>
+<rect x="52" y="102" width="192" height="78" rx="12" fill="var(--card)" stroke="var(--cardline)"/><text x="68" y="132" font-size="15" font-weight="600" fill="var(--ink)">Screen</text><text x="68" y="154" font-size="12.5" fill="var(--soft)">displayservice · HEVC video</text>
+<rect x="52" y="200" width="192" height="78" rx="12" fill="var(--card)" stroke="var(--cardline)"/><text x="68" y="230" font-size="15" font-weight="600" fill="var(--ink)">Input</text><text x="68" y="252" font-size="12.5" fill="var(--soft)">touch · keys · buttons (HID)</text>
+<rect x="52" y="298" width="192" height="78" rx="12" fill="var(--card)" stroke="var(--cardline)"/><text x="68" y="328" font-size="15" font-weight="600" fill="var(--ink)">Clipboard and files</text><text x="68" y="350" font-size="12.5" fill="var(--soft)">pasteboard · house_arrest</text>
+<rect x="288" y="52" width="34" height="356" rx="17" fill="var(--deep)"/><text transform="translate(310 230) rotate(-90)" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="1.2" fill="var(--ondeep)">USB  ·  WI-FI TUNNEL</text>
+<rect x="346" y="52" width="582" height="356" rx="20" fill="var(--tint)" stroke="var(--tintline)"/><text x="366" y="84" font-size="12" font-weight="700" letter-spacing="1.4" fill="var(--accent)">MIRRORLY ON WINDOWS · 4 THREADS</text>
+<rect x="366" y="102" width="168" height="274" rx="12" fill="var(--card)" stroke="var(--cardline)"/><text x="382" y="132" font-size="15" font-weight="600" fill="var(--ink)">network</text><text x="382" y="154" font-size="12.5" fill="var(--soft)">tunnel · RTP · RTCP</text><text x="382" y="174" font-size="12.5" fill="var(--soft)">input sender</text><text x="382" y="194" font-size="12.5" fill="var(--soft)">clipboard bridge</text><text x="382" y="214" font-size="12.5" fill="var(--soft)">USB / Wi-Fi switching</text>
+<rect x="580" y="102" width="150" height="78" rx="12" fill="var(--card)" stroke="var(--cardline)"/><text x="596" y="132" font-size="15" font-weight="600" fill="var(--ink)">decode</text><text x="596" y="154" font-size="12.5" fill="var(--soft)">FFmpeg d3d11va</text>
+<rect x="760" y="102" width="150" height="78" rx="12" fill="var(--card)" stroke="var(--cardline)"/><text x="776" y="132" font-size="15" font-weight="600" fill="var(--ink)">present</text><text x="776" y="154" font-size="12.5" fill="var(--soft)">flip-model swapchain</text>
+<rect x="580" y="298" width="330" height="78" rx="12" fill="var(--card)" stroke="var(--cardline)"/><text x="596" y="328" font-size="15" font-weight="600" fill="var(--ink)">main</text><text x="596" y="350" font-size="12.5" fill="var(--soft)">window · mouse and keyboard · drag and drop</text>
+<text x="580" y="232" font-size="13" fill="var(--soft)">Video and input travel separately:</text><text x="580" y="252" font-size="13" fill="var(--soft)">a click never waits behind a frame.</text>
+<g stroke="var(--line)" stroke-width="2" fill="none"><path d="M244 141 H362" marker-end="url(#arrow)"/><path d="M362 239 H248" marker-end="url(#arrow)"/><path d="M248 337 H362" marker-end="url(#arrow)" marker-start="url(#arrow)"/><path d="M534 141 H576" marker-end="url(#arrow)"/><path d="M730 141 H756" marker-end="url(#arrow)"/><path d="M580 337 H538" marker-end="url(#arrow)"/><path d="M835 180 V206" marker-end="url(#arrow)"/></g>
+<text x="266" y="132" font-size="11.5" font-weight="600" text-anchor="middle" fill="var(--ink)">video</text><text x="266" y="230" font-size="11.5" font-weight="600" text-anchor="middle" fill="var(--ink)">touch</text><text x="266" y="328" font-size="11.5" font-weight="600" text-anchor="middle" fill="var(--ink)">files</text><text x="557" y="132" font-size="11.5" font-weight="600" text-anchor="middle" fill="var(--ink)">frames</text><text x="557" y="328" font-size="11.5" font-weight="600" text-anchor="middle" fill="var(--ink)">input</text>
+<text x="835" y="224" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--accent)">your screen</text>
 </svg>

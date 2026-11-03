@@ -1,78 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="470" viewBox="0 0 960 470" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="470" viewBox="0 0 960 470" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" role="img">
+  <title>Moving files between the iPhone and Windows</title>
+  <style>
+    :root { --bg1:#FBFCFD; --bg2:#E9EFF3; --card:#FFFFFF; --cardline:#D3DCE2; --ink:#20272D; --soft:#56646F; --faint:#66757F; --accent:#2F6F88; --ice:#8DC2D6; --onice:#14191D; --tint:#E1F1F7; --tintline:#8DC2D6; --deep:#37525F; --ondeep:#E4F5FA; --line:#5F8FA3; --hair:#2C3339; --hairop:0.09; --frame:#C9D3DA; --bar:#E4EAEE; --baricon:#2C3339; --barline:#BFCAD2; --badge:#2C3339; --onbadge:#F3F6F8; --desk1:#DCE4E9; --desk2:#CDD7DE; --deskitem:#2C3339; --deskop:0.14; --device:#2C3339; --deviceline:#576774; --chartphone:#576774; --onchart:#F3F6F8; --chartpc:#8DC2D6; --stage:#4F8CA6; --glow:#8DC2D6; --glowop:0.34; --mbody:#2E383F; --mring:#23282E; --mleft:#576774; --mice:#8DC2D6; --mright:#37525F; --mplay:#D2EDF5; --mmirror:#2C3339; --mly:#7FB6CA; }
+    @media (prefers-color-scheme: dark) { :root { --bg1:#14181C; --bg2:#1E252B; --card:#232A30; --cardline:#3A464F; --ink:#E9F0F4; --soft:#A3B3BE; --faint:#8A9BA7; --accent:#8DC2D6; --ice:#8DC2D6; --onice:#14191D; --tint:#22343E; --tintline:#4F7A8D; --deep:#37525F; --ondeep:#E4F5FA; --line:#8DC2D6; --hair:#FFFFFF; --hairop:0.06; --frame:#1A1F24; --bar:#262D33; --baricon:#E9F0F4; --barline:#0E1114; --badge:#E9F0F4; --onbadge:#14191D; --desk1:#232A30; --desk2:#1A1F24; --deskitem:#FFFFFF; --deskop:0.11; --device:#0E1114; --deviceline:#3A464F; --chartphone:#66788A; --onchart:#FFFFFF; --chartpc:#8DC2D6; --stage:#8DC2D6; --glow:#8DC2D6; --glowop:0.16; --mbody:#66788A; --mring:#3D4954; --mleft:#8FA2B0; --mice:#8DC2D6; --mright:#37525F; --mplay:#E4F5FA; --mmirror:#E9F0F4; --mly:#8DC2D6; } }
+  </style>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0D1226"/>
-      <stop offset="1" stop-color="#141a35"/>
-    </linearGradient>
-    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#2F80FF"/>
-      <stop offset="1" stop-color="#7B4DF2"/>
-    </linearGradient>
-    <linearGradient id="green" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#10B981"/>
-      <stop offset="1" stop-color="#0EA5E9"/>
-    </linearGradient>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="#8FA2E8"/>
-    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--bg1)"/><stop offset="1" stop-color="var(--bg2)"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--line)"/></marker>
   </defs>
-
-  <rect width="960" height="470" rx="24" fill="url(#bg)"/>
-
-  <!-- Lane 1: iPhone -> Windows -->
-  <rect x="32" y="34" width="190" height="30" rx="15" fill="url(#blue)"/>
-  <text x="127" y="54" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">iPhone  →  Windows</text>
-
-  <g font-size="14">
-    <g transform="translate(32 84)">
-      <rect width="264" height="118" rx="16" fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
-      <text x="20" y="34" font-size="12" font-weight="700" letter-spacing="1.2" fill="#7C8BC9">STEP 1 · ON THE IPHONE</text>
-      <text x="20" y="62" font-size="17" font-weight="600" fill="#fff">Copy it</text>
-      <text x="20" y="86" fill="#A3ADD6">Photos: Share › Copy Photo</text>
-      <text x="20" y="106" fill="#A3ADD6">Files: touch and hold › Copy</text>
-    </g>
-    <g transform="translate(348 84)">
-      <rect width="264" height="118" rx="16" fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
-      <text x="20" y="34" font-size="12" font-weight="700" letter-spacing="1.2" fill="#7C8BC9">STEP 2 · AUTOMATIC</text>
-      <text x="20" y="62" font-size="17" font-weight="600" fill="#fff">Mirrorly fetches it</text>
-      <text x="20" y="86" fill="#A3ADD6">Full quality, original file names.</text>
-      <text x="20" y="106" fill="#A3ADD6">A 4 MB photo: under a second.</text>
-    </g>
-    <g transform="translate(664 84)">
-      <rect width="264" height="118" rx="16" fill="#4C61FA" fill-opacity="0.16" stroke="#6F83FF" stroke-opacity="0.6"/>
-      <text x="20" y="34" font-size="12" font-weight="700" letter-spacing="1.2" fill="#9DB0FF">STEP 3 · ON THE PC</text>
-      <text x="20" y="62" font-size="17" font-weight="600" fill="#fff">Drag the chip out</text>
-      <text x="20" y="86" fill="#C3CCF5">Onto the desktop, into Explorer,</text>
-      <text x="20" y="106" fill="#C3CCF5">or into any app that takes files.</text>
-    </g>
-  </g>
-  <path d="M300 143 H342" stroke="#8FA2E8" stroke-width="2.2" marker-end="url(#arrow)"/>
-  <path d="M616 143 H658" stroke="#8FA2E8" stroke-width="2.2" marker-end="url(#arrow)"/>
-
-  <!-- Lane 2: Windows -> iPhone -->
-  <rect x="32" y="244" width="190" height="30" rx="15" fill="url(#green)"/>
-  <text x="127" y="264" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">Windows  →  iPhone</text>
-
-  <g font-size="14">
-    <g transform="translate(32 294)">
-      <rect width="264" height="140" rx="16" fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
-      <text x="20" y="34" font-size="12" font-weight="700" letter-spacing="1.2" fill="#7C8BC9">STEP 1 · ON THE PC</text>
-      <text x="20" y="62" font-size="17" font-weight="600" fill="#fff">Drop files on the window</text>
-      <text x="20" y="86" fill="#A3ADD6">Drag from Explorer onto the</text>
-      <text x="20" y="106" fill="#A3ADD6">mirrored screen. Up to 200 MB</text>
-      <text x="20" y="126" fill="#A3ADD6">per drop.</text>
-    </g>
-    <g transform="translate(348 294)">
-      <rect width="580" height="62" rx="16" fill="#10B981" fill-opacity="0.12" stroke="#34D399" stroke-opacity="0.5"/>
-      <text x="20" y="27" font-size="16" font-weight="600" fill="#fff">Photos and videos</text>
-      <text x="20" y="48" fill="#B7E9D6">Pasted straight into the app you have open: a chat, a note, an email.</text>
-    </g>
-    <g transform="translate(348 372)">
-      <rect width="580" height="62" rx="16" fill="#0EA5E9" fill-opacity="0.12" stroke="#38BDF8" stroke-opacity="0.5"/>
-      <text x="20" y="27" font-size="16" font-weight="600" fill="#fff">Documents (PDF, Word, …)</text>
-      <text x="20" y="48" fill="#B6E2F5">Saved with their names in a Mirrorly folder in the Files app.</text>
-    </g>
-  </g>
-  <path d="M300 364 C 322 364, 322 325, 342 325" fill="none" stroke="#8FA2E8" stroke-width="2.2" marker-end="url(#arrow)"/>
-  <path d="M300 364 C 322 364, 322 403, 342 403" fill="none" stroke="#8FA2E8" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <rect width="960" height="470" rx="24" fill="url(#bg)" stroke="var(--cardline)"/>
+<rect x="32" y="34" width="190" height="30" rx="15" fill="var(--ice)"/><text x="127" y="54" font-size="14" font-weight="700" text-anchor="middle" fill="var(--onice)">iPhone  →  Windows</text>
+<rect x="32" y="84" width="264" height="118" rx="16" fill="var(--card)" stroke="var(--cardline)"/><text x="52" y="118" font-size="12" font-weight="700" letter-spacing="1.4" fill="var(--accent)">STEP 1 · ON THE IPHONE</text><text x="52" y="146" font-size="17" font-weight="600" fill="var(--ink)">Copy it</text><text x="52" y="170" font-size="14" fill="var(--soft)">Photos: Share › Copy Photo</text><text x="52" y="190" font-size="14" fill="var(--soft)">Files: touch and hold › Copy</text>
+<rect x="348" y="84" width="264" height="118" rx="16" fill="var(--card)" stroke="var(--cardline)"/><text x="368" y="118" font-size="12" font-weight="700" letter-spacing="1.4" fill="var(--accent)">STEP 2 · AUTOMATIC</text><text x="368" y="146" font-size="17" font-weight="600" fill="var(--ink)">Mirrorly fetches it</text><text x="368" y="170" font-size="14" fill="var(--soft)">Full quality, original file names.</text><text x="368" y="190" font-size="14" fill="var(--soft)">A 4 MB photo: under a second.</text>
+<rect x="664" y="84" width="264" height="118" rx="16" fill="var(--tint)" stroke="var(--tintline)"/><text x="684" y="118" font-size="12" font-weight="700" letter-spacing="1.4" fill="var(--accent)">STEP 3 · ON THE PC</text><text x="684" y="146" font-size="17" font-weight="600" fill="var(--ink)">Drag the chip out</text><text x="684" y="170" font-size="14" fill="var(--soft)">Onto the desktop, into Explorer,</text><text x="684" y="190" font-size="14" fill="var(--soft)">or into any app that takes files.</text>
+<path d="M300 143 H342" fill="none" stroke="var(--line)" stroke-width="2.2" marker-end="url(#arrow)"/><path d="M616 143 H658" fill="none" stroke="var(--line)" stroke-width="2.2" marker-end="url(#arrow)"/>
+<rect x="32" y="244" width="190" height="30" rx="15" fill="var(--deep)"/><text x="127" y="264" font-size="14" font-weight="700" text-anchor="middle" fill="var(--ondeep)">Windows  →  iPhone</text>
+<rect x="32" y="294" width="264" height="140" rx="16" fill="var(--card)" stroke="var(--cardline)"/><text x="52" y="328" font-size="12" font-weight="700" letter-spacing="1.4" fill="var(--accent)">STEP 1 · ON THE PC</text><text x="52" y="356" font-size="17" font-weight="600" fill="var(--ink)">Drop files on the window</text><text x="52" y="380" font-size="14" fill="var(--soft)">Drag from Explorer onto the</text><text x="52" y="400" font-size="14" fill="var(--soft)">mirrored screen. Up to 200 MB</text><text x="52" y="420" font-size="14" fill="var(--soft)">per drop.</text>
+<rect x="348" y="294" width="580" height="62" rx="16" fill="var(--tint)" stroke="var(--tintline)"/><text x="368" y="321" font-size="16" font-weight="600" fill="var(--ink)">Photos and videos</text><text x="368" y="342" font-size="14" fill="var(--soft)">Pasted straight into the app you have open: a chat, a note, an email.</text>
+<rect x="348" y="372" width="580" height="62" rx="16" fill="var(--tint)" stroke="var(--tintline)"/><text x="368" y="399" font-size="16" font-weight="600" fill="var(--ink)">Documents (PDF, Word, …)</text><text x="368" y="420" font-size="14" fill="var(--soft)">Saved with their names in a Mirrorly folder in the Files app.</text>
+<path d="M300 364 C 322 364, 322 325, 342 325" fill="none" stroke="var(--line)" stroke-width="2.2" marker-end="url(#arrow)"/><path d="M300 364 C 322 364, 322 403, 342 403" fill="none" stroke="var(--line)" stroke-width="2.2" marker-end="url(#arrow)"/>
 </svg>

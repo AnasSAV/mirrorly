@@ -1,98 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="456" viewBox="0 0 960 456" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="456" viewBox="0 0 960 456" font-family="Segoe UI, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" role="img">
+  <title>The iPad as a second monitor: what happens between the PC and Safari</title>
+  <style>
+    :root { --bg1:#FBFCFD; --bg2:#E9EFF3; --card:#FFFFFF; --cardline:#D3DCE2; --ink:#20272D; --soft:#56646F; --faint:#66757F; --accent:#2F6F88; --ice:#8DC2D6; --onice:#14191D; --tint:#E1F1F7; --tintline:#8DC2D6; --deep:#37525F; --ondeep:#E4F5FA; --line:#5F8FA3; --hair:#2C3339; --hairop:0.09; --frame:#C9D3DA; --bar:#E4EAEE; --baricon:#2C3339; --barline:#BFCAD2; --badge:#2C3339; --onbadge:#F3F6F8; --desk1:#DCE4E9; --desk2:#CDD7DE; --deskitem:#2C3339; --deskop:0.14; --device:#2C3339; --deviceline:#576774; --chartphone:#576774; --onchart:#F3F6F8; --chartpc:#8DC2D6; --stage:#4F8CA6; --glow:#8DC2D6; --glowop:0.34; --mbody:#2E383F; --mring:#23282E; --mleft:#576774; --mice:#8DC2D6; --mright:#37525F; --mplay:#D2EDF5; --mmirror:#2C3339; --mly:#7FB6CA; }
+    @media (prefers-color-scheme: dark) { :root { --bg1:#14181C; --bg2:#1E252B; --card:#232A30; --cardline:#3A464F; --ink:#E9F0F4; --soft:#A3B3BE; --faint:#8A9BA7; --accent:#8DC2D6; --ice:#8DC2D6; --onice:#14191D; --tint:#22343E; --tintline:#4F7A8D; --deep:#37525F; --ondeep:#E4F5FA; --line:#8DC2D6; --hair:#FFFFFF; --hairop:0.06; --frame:#1A1F24; --bar:#262D33; --baricon:#E9F0F4; --barline:#0E1114; --badge:#E9F0F4; --onbadge:#14191D; --desk1:#232A30; --desk2:#1A1F24; --deskitem:#FFFFFF; --deskop:0.11; --device:#0E1114; --deviceline:#3A464F; --chartphone:#66788A; --onchart:#FFFFFF; --chartpc:#8DC2D6; --stage:#8DC2D6; --glow:#8DC2D6; --glowop:0.16; --mbody:#66788A; --mring:#3D4954; --mleft:#8FA2B0; --mice:#8DC2D6; --mright:#37525F; --mplay:#E4F5FA; --mmirror:#E9F0F4; --mly:#8DC2D6; } }
+  </style>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0D1226"/>
-      <stop offset="1" stop-color="#141a35"/>
-    </linearGradient>
-    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#2F80FF"/>
-      <stop offset="1" stop-color="#7B4DF2"/>
-    </linearGradient>
-    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1E3A8A"/>
-      <stop offset="1" stop-color="#5B21B6"/>
-    </linearGradient>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="#8FA2E8"/>
-    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--bg1)"/><stop offset="1" stop-color="var(--bg2)"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--line)"/></marker>
+<linearGradient id="wall" x1="0" y1="0" x2="0.6" y2="1"><stop offset="0" stop-color="#23282E"/><stop offset="0.5" stop-color="#37525F"/><stop offset="1" stop-color="#8DC2D6"/></linearGradient>
   </defs>
-
-  <rect width="960" height="456" rx="24" fill="url(#bg)"/>
-
-  <!-- The PC -->
-  <g transform="translate(70 40)">
-    <rect width="300" height="188" rx="12" fill="#0B1020" stroke="#3A4466" stroke-width="2"/>
-    <rect x="10" y="10" width="280" height="168" rx="4" fill="url(#wall)"/>
-    <rect x="28" y="30" width="150" height="96" rx="6" fill="#F8FAFF" fill-opacity="0.92"/>
-    <rect x="28" y="30" width="150" height="16" rx="6" fill="#DCE3F8"/>
-    <rect x="40" y="58" width="96" height="6" rx="3" fill="#94A3C8"/>
-    <rect x="40" y="72" width="120" height="6" rx="3" fill="#B8C3DE"/>
-    <rect x="40" y="86" width="80" height="6" rx="3" fill="#B8C3DE"/>
-    <rect x="10" y="166" width="280" height="12" fill="#0B1020" fill-opacity="0.55"/>
-    <path d="M-20 196 H320 L304 210 H-4 Z" fill="#2A3352"/>
-    <text x="150" y="240" text-anchor="middle" font-size="15" font-weight="600" fill="#fff">Your PC</text>
-    <text x="150" y="260" text-anchor="middle" font-size="13" fill="#A3ADD6">mouse and keyboard as usual</text>
-  </g>
-
-  <!-- Link -->
-  <path d="M400 128 H566" stroke="#8FA2E8" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow)"/>
-  <rect x="408" y="92" width="150" height="26" rx="13" fill="url(#blue)"/>
-  <text x="483" y="110" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">Wi-Fi · 60 fps</text>
-  <text x="483" y="152" text-anchor="middle" font-size="12.5" fill="#A3ADD6">the desktop extends</text>
-  <text x="483" y="170" text-anchor="middle" font-size="12.5" fill="#A3ADD6">onto the iPad</text>
-
-  <!-- The iPad, landscape -->
-  <g transform="translate(590 46)">
-    <rect width="300" height="212" rx="20" fill="#0B1020" stroke="#3A4466" stroke-width="2"/>
-    <rect x="14" y="14" width="272" height="184" rx="8" fill="url(#wall)"/>
-    <rect x="70" y="44" width="170" height="110" rx="6" fill="#F8FAFF" fill-opacity="0.92"/>
-    <rect x="70" y="44" width="170" height="16" rx="6" fill="#DCE3F8"/>
-    <rect x="84" y="74" width="110" height="6" rx="3" fill="#94A3C8"/>
-    <rect x="84" y="88" width="136" height="6" rx="3" fill="#B8C3DE"/>
-    <rect x="84" y="102" width="92" height="6" rx="3" fill="#B8C3DE"/>
-    <rect x="84" y="122" width="56" height="18" rx="9" fill="#4C61FA"/>
-    <!-- pointer -->
-    <path d="M150 128 l0 22 l6 -6 l5 10 l4 -2 l-5 -10 l8 0 z" fill="#fff" stroke="#111" stroke-width="1.2"/>
-    <text x="150" y="234" text-anchor="middle" font-size="15" font-weight="600" fill="#fff">Your iPad</text>
-    <text x="150" y="254" text-anchor="middle" font-size="13" fill="#A3ADD6">a second screen, in Safari</text>
-  </g>
-
-  <!-- Pipeline -->
-  <g font-size="13">
-    <g transform="translate(32 346)">
-      <rect width="164" height="78" rx="14" fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
-      <text x="16" y="28" font-size="11" font-weight="700" letter-spacing="1.1" fill="#7C8BC9">1 · WINDOWS</text>
-      <text x="16" y="50" font-weight="600" fill="#fff">Virtual monitor</text>
-      <text x="16" y="68" fill="#A3ADD6">on only while in use</text>
-    </g>
-    <g transform="translate(216 346)">
-      <rect width="164" height="78" rx="14" fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
-      <text x="16" y="28" font-size="11" font-weight="700" letter-spacing="1.1" fill="#7C8BC9">2 · CAPTURE</text>
-      <text x="16" y="50" font-weight="600" fill="#fff">Desktop Duplication</text>
-      <text x="16" y="68" fill="#A3ADD6">stays on the GPU</text>
-    </g>
-    <g transform="translate(400 346)">
-      <rect width="164" height="78" rx="14" fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
-      <text x="16" y="28" font-size="11" font-weight="700" letter-spacing="1.1" fill="#7C8BC9">3 · ENCODE</text>
-      <text x="16" y="50" font-weight="600" fill="#fff">H.264 in hardware</text>
-      <text x="16" y="68" fill="#A3ADD6">Quick Sync, zero-copy</text>
-    </g>
-    <g transform="translate(584 346)">
-      <rect width="164" height="78" rx="14" fill="#FFFFFF" fill-opacity="0.05" stroke="#FFFFFF" stroke-opacity="0.12"/>
-      <text x="16" y="28" font-size="11" font-weight="700" letter-spacing="1.1" fill="#7C8BC9">4 · SEND</text>
-      <text x="16" y="50" font-weight="600" fill="#fff">WebSocket</text>
-      <text x="16" y="68" fill="#A3ADD6">never queues: skips</text>
-    </g>
-    <g transform="translate(768 346)">
-      <rect width="160" height="78" rx="14" fill="#4C61FA" fill-opacity="0.16" stroke="#6F83FF" stroke-opacity="0.6"/>
-      <text x="16" y="28" font-size="11" font-weight="700" letter-spacing="1.1" fill="#9DB0FF">5 · IPAD</text>
-      <text x="16" y="50" font-weight="600" fill="#fff">Safari WebCodecs</text>
-      <text x="16" y="68" fill="#C3CCF5">decode, draws pointer</text>
-    </g>
-  </g>
-  <path d="M198 385 H212" stroke="#8FA2E8" stroke-width="2" marker-end="url(#arrow)"/>
-  <path d="M382 385 H396" stroke="#8FA2E8" stroke-width="2" marker-end="url(#arrow)"/>
-  <path d="M566 385 H580" stroke="#8FA2E8" stroke-width="2" marker-end="url(#arrow)"/>
-  <path d="M750 385 H764" stroke="#8FA2E8" stroke-width="2" marker-end="url(#arrow)"/>
-  <text x="480" y="328" text-anchor="middle" font-size="12.5" fill="#7C8BC9">About 12 ms on the PC from a screen change to the frame on its way (median, 2360 × 1640) · the pointer needs no frame</text>
+  <rect width="960" height="456" rx="24" fill="url(#bg)" stroke="var(--cardline)"/>
+<g transform="translate(70 40)"><rect width="300" height="188" rx="12" fill="var(--device)" stroke="var(--deviceline)" stroke-width="2"/><rect x="10" y="10" width="280" height="168" rx="4" fill="url(#wall)"/><rect x="28" y="30" width="150" height="96" rx="6" fill="#F3F6F8" fill-opacity="0.95"/><path d="M28 46 v-10 a6 6 0 0 1 6 -6 h138 a6 6 0 0 1 6 6 v10 z" fill="#C9D3DA"/><rect x="40" y="58" width="93" height="6" rx="3" fill="#66788A"/><rect x="40" y="72" width="120" height="6" rx="3" fill="#AEBBC4"/><rect x="40" y="86" width="81" height="6" rx="3" fill="#AEBBC4"/><rect x="10" y="166" width="280" height="12" fill="#14181C" fill-opacity="0.6"/><path d="M-20 196 H320 L304 210 H-4 Z" fill="var(--deviceline)"/><text x="150" y="240" font-size="15" font-weight="600" text-anchor="middle" fill="var(--ink)">Your PC</text><text x="150" y="260" font-size="13" text-anchor="middle" fill="var(--soft)">mouse and keyboard as usual</text></g>
+<path d="M400 128 H566" fill="none" stroke="var(--line)" stroke-width="2.4" stroke-dasharray="7 6" marker-end="url(#arrow)"/><rect x="408" y="92" width="150" height="26" rx="13" fill="var(--ice)"/><text x="483" y="110" font-size="13" font-weight="700" text-anchor="middle" fill="var(--onice)">Wi-Fi · 60 fps</text><text x="483" y="152" font-size="12.5" text-anchor="middle" fill="var(--soft)">the desktop extends</text><text x="483" y="170" font-size="12.5" text-anchor="middle" fill="var(--soft)">onto the iPad</text>
+<g transform="translate(590 46)"><rect width="300" height="212" rx="20" fill="var(--device)" stroke="var(--deviceline)" stroke-width="2"/><rect x="14" y="14" width="272" height="184" rx="8" fill="url(#wall)"/><rect x="70" y="44" width="170" height="110" rx="6" fill="#F3F6F8" fill-opacity="0.95"/><path d="M70 60 v-10 a6 6 0 0 1 6 -6 h158 a6 6 0 0 1 6 6 v10 z" fill="#C9D3DA"/><rect x="82" y="72" width="105" height="6" rx="3" fill="#66788A"/><rect x="82" y="86" width="136" height="6" rx="3" fill="#AEBBC4"/><rect x="82" y="100" width="92" height="6" rx="3" fill="#AEBBC4"/><rect x="84" y="122" width="56" height="18" rx="9" fill="#8DC2D6"/><path d="M150 128 l0 22 l6 -6 l5 10 l4 -2 l-5 -10 l8 0 z" fill="#fff" stroke="#14181C" stroke-width="1.2"/><text x="150" y="234" font-size="15" font-weight="600" text-anchor="middle" fill="var(--ink)">Your iPad</text><text x="150" y="254" font-size="13" text-anchor="middle" fill="var(--soft)">a second screen, in Safari</text></g>
+<text x="480" y="328" font-size="12.5" text-anchor="middle" fill="var(--faint)">About 12 ms on the PC from a screen change to the frame on its way (median, 2360 × 1640) · the pointer needs no frame</text>
+<rect x="32" y="346" width="164" height="78" rx="14" fill="var(--card)" stroke="var(--cardline)"/><text x="48" y="374" font-size="11" font-weight="700" letter-spacing="1.4" fill="var(--accent)">1 · WINDOWS</text><text x="48" y="396" font-size="13" font-weight="600" fill="var(--ink)">Virtual monitor</text><text x="48" y="414" font-size="13" fill="var(--soft)">on only while in use</text>
+<rect x="216" y="346" width="164" height="78" rx="14" fill="var(--card)" stroke="var(--cardline)"/><text x="232" y="374" font-size="11" font-weight="700" letter-spacing="1.4" fill="var(--accent)">2 · CAPTURE</text><text x="232" y="396" font-size="13" font-weight="600" fill="var(--ink)">Desktop Duplication</text><text x="232" y="414" font-size="13" fill="var(--soft)">stays on the GPU</text>
+<rect x="400" y="346" width="164" height="78" rx="14" fill="var(--card)" stroke="var(--cardline)"/><text x="416" y="374" font-size="11" font-weight="700" letter-spacing="1.4" fill="var(--accent)">3 · ENCODE</text><text x="416" y="396" font-size="13" font-weight="600" fill="var(--ink)">H.264 in hardware</text><text x="416" y="414" font-size="13" fill="var(--soft)">Quick Sync, zero-copy</text>
+<rect x="584" y="346" width="164" height="78" rx="14" fill="var(--card)" stroke="var(--cardline)"/><text x="600" y="374" font-size="11" font-weight="700" letter-spacing="1.4" fill="var(--accent)">4 · SEND</text><text x="600" y="396" font-size="13" font-weight="600" fill="var(--ink)">WebSocket</text><text x="600" y="414" font-size="13" fill="var(--soft)">never queues: skips</text>
+<rect x="768" y="346" width="160" height="78" rx="14" fill="var(--tint)" stroke="var(--tintline)"/><text x="784" y="374" font-size="11" font-weight="700" letter-spacing="1.4" fill="var(--accent)">5 · IPAD</text><text x="784" y="396" font-size="13" font-weight="600" fill="var(--ink)">Safari WebCodecs</text><text x="784" y="414" font-size="13" fill="var(--soft)">decode, draws pointer</text>
+<path d="M198 385 H212" fill="none" stroke="var(--line)" stroke-width="2" marker-end="url(#arrow)"/><path d="M382 385 H396" fill="none" stroke="var(--line)" stroke-width="2" marker-end="url(#arrow)"/><path d="M566 385 H580" fill="none" stroke="var(--line)" stroke-width="2" marker-end="url(#arrow)"/><path d="M750 385 H764" fill="none" stroke="var(--line)" stroke-width="2" marker-end="url(#arrow)"/>
 </svg>

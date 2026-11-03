@@ -59,10 +59,22 @@ or iPad too: the unit tests cover parsing, layout and maths, not the phone.
 | `MIRROR_NAGLE=1` | Leave Nagle's algorithm on (comparison) |
 | `MIRROR_DXGI_TRACE=1` | Trace presentation timing |
 | `MIRROR_SQUARE=1` | No rounded window corners |
+| `MIRROR_THEME=light\|dark` | Use this theme instead of following Windows |
 | `MIRROR_DISPLAY_SYSMEM=1` | iPad display: encode from system memory (comparison) |
 
 <kbd>F9</kbd> runs a latency probe: ten timed taps where the mouse points,
 results in the overlay and the log.
+
+## The logo and colours
+
+The logo's source is `docs/assets/logo/*.svg`, one version for light backgrounds
+and one for dark. `python packaging/make_icon.py` renders them with Edge into
+everything built from them: the app icon, the installer's pictures, the pictures
+in the app and the iPad's Home Screen icon.
+
+The app's colours are in `crates/app/src/theme.rs`, the iPad page's at the top
+of `crates/display/src/viewer.html`. The diagrams in `docs/assets` each hold both
+palettes and pick one with `prefers-color-scheme`.
 
 ## Probes
 
