@@ -123,6 +123,8 @@ pub struct Chrome {
     pub phones: Vec<device::phones::Phone>,
     /// The iPad is a display: the address to open in its Safari.
     pub display: Option<String>,
+    /// Light or dark, as Windows' app mode is.
+    pub theme: &'static crate::theme::Theme,
 }
 
 #[derive(Default)]

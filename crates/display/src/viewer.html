@@ -5,8 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Mirrorly">
+<meta name="color-scheme" content="light dark">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Mirrorly display</title>
 <style>
+  /* Titanium & Ice, following the iPad's light or dark appearance. */
+  :root { --page: #F3F6F8; --ink: #20272D; --soft: #56646F; --accent: #8DC2D6; --on-accent: #14191D;
+          --m-body: #2E383F; --m-ring: #23282E; --m-left: #576774; --m-ice: #8DC2D6; --m-right: #37525F; --m-play: #D2EDF5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --page: #14181C; --ink: #E9F0F4; --soft: #A3B3BE;
+            --m-body: #66788A; --m-ring: #3D4954; --m-left: #8FA2B0; --m-play: #E4F5FA; }
+  }
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none;
                -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
                font-family: -apple-system, system-ui, sans-serif; }
@@ -16,13 +26,14 @@
   .ptr { position: fixed; left: 0; top: 0; transform-origin: 0 0; pointer-events: none;
          image-rendering: pixelated; will-change: transform; }
   #ptr-invert { mix-blend-mode: difference; }
-  #hud { position: fixed; left: 10px; top: 10px; font: 12px ui-monospace, monospace; color: #8f8;
-         background: rgba(0,0,0,.6); padding: 4px 8px; border-radius: 6px; white-space: pre; }
+  #hud { position: fixed; left: 10px; top: 10px; font: 12px ui-monospace, monospace; color: #D2EDF5;
+         background: rgba(20,24,28,.72); padding: 4px 8px; border-radius: 6px; white-space: pre; }
   #cover { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 14px; align-items: center;
-           justify-content: center; color: #fff; background: #0d1226; text-align: center; padding: 24px; }
+           justify-content: center; color: var(--ink); background: var(--page); text-align: center; padding: 24px; }
+  #cover svg { width: 132px; margin-bottom: 8px; }
   #cover h1 { margin: 0; font-size: 26px; }
-  #cover p { margin: 0; color: #a3add6; font-size: 16px; max-width: 30em; }
-  #cover button { font: 600 18px -apple-system, sans-serif; color: #fff; background: #4c61fa; border: 0;
+  #cover p { margin: 0; color: var(--soft); font-size: 16px; max-width: 30em; }
+  #cover button { font: 600 18px -apple-system, sans-serif; color: var(--on-accent); background: var(--accent); border: 0;
                   border-radius: 14px; padding: 14px 30px; }
 </style>
 </head>
@@ -32,6 +43,7 @@
 <canvas id="ptr-paint" class="ptr" hidden></canvas>
 <div id="hud" hidden></div>
 <div id="cover">
+  <svg viewBox="97 127 628 493" role="img" aria-label="Mirrorly"><path fill="var(--m-body)" d="M105.0 224.1A84 84 0 0 1 228.1 149.8L511.2 298.7A84 84 0 0 1 511.2 447.3L228.1 596.2A84 84 0 0 1 105.0 521.9Z"/><path fill="var(--m-ring)" d="M151.0 253.9A56 56 0 0 1 233.1 204.3L459.5 323.4A56 56 0 0 1 459.5 422.6L233.1 541.7A56 56 0 0 1 151.0 492.1Z"/><path fill="var(--m-left)" d="M166.0 255.6A42 42 0 0 1 227.6 218.4L450.8 335.8A42 42 0 0 1 450.8 410.2L227.6 527.6A42 42 0 0 1 166.0 490.4Z"/><path fill="var(--m-ice)" d="M591.0 153.8A84 84 0 0 1 716.0 227.1L716.0 519.6A84 84 0 0 1 604.0 598.8L350.6 509.1A1 1 0 0 1 349.9 508.2L330.1 300.3A1 1 0 0 1 330.6 299.4Z"/><path fill="var(--m-right)" d="M599.5 207.5A44 44 0 0 1 665.0 245.9L665.0 504.0A44 44 0 0 1 606.3 545.5L362.7 459.3A1 1 0 0 1 362.0 458.3L362.0 340.8A1 1 0 0 1 362.5 340.0Z"/><path fill="var(--m-play)" d="M299.0 345.3A38 38 0 0 1 354.9 311.7L494.9 386.3A32 32 0 0 1 494.9 442.7L354.9 517.3A38 38 0 0 1 299.0 483.7Z"/></svg>
   <h1>Mirrorly display</h1>
   <p>This iPad becomes a second screen for your PC. Move your mouse onto it and use it like any other monitor.</p>
   <button id="go">Start</button>

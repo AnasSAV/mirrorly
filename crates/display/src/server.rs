@@ -25,6 +25,9 @@ use anyhow::{Context, Result};
 const QUEUE: usize = 3;
 
 const PAGE: &str = include_str!("viewer.html");
+/// What the iPad shows for it on the Home Screen. (It asks for this at the
+/// site's root, and it's no secret, so it needs no key.)
+const TOUCH_ICON: &[u8] = include_bytes!("apple-touch-icon.png");
 
 /// What goes out to a viewer, already framed.
 enum Out {
@@ -189,11 +192,15 @@ fn valid_key(k: &str) -> bool {
 enum Route {
     Page,
     Stream,
+    Icon,
     Unknown,
 }
 
 fn route(path: &str, key: &str) -> Route {
     let path = path.split('?').next().unwrap_or("");
+    if matches!(path, "/apple-touch-icon.png" | "/apple-touch-icon-precomposed.png") {
+        return Route::Icon;
+    }
     let Some(rest) = path.strip_prefix('/').and_then(|p| p.strip_prefix(key)) else { return Route::Unknown };
     match rest {
         "" | "/" => Route::Page,
@@ -246,7 +253,7 @@ fn handle(mut conn: TcpStream, hub: &Hub, secret: &str) -> Result<()> {
         .lines()
         .find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case("sec-websocket-key")).map(|(_, v)| v.trim().to_string()));
 
-    let (status, body) = match (route(path, secret), key) {
+    let (status, kind, body) = match (route(path, secret), key) {
         (Route::Stream, Some(key)) => {
             let head = format!(
                 "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n",
@@ -255,18 +262,19 @@ fn handle(mut conn: TcpStream, hub: &Hub, secret: &str) -> Result<()> {
             conn.write_all(head.as_bytes())?;
             return viewer(conn, hub);
         }
-        (Route::Page, _) => ("200 OK", PAGE),
+        (Route::Page, _) => ("200 OK", "text/html; charset=utf-8", PAGE.as_bytes()),
+        (Route::Icon, _) => ("200 OK", "image/png", TOUCH_ICON),
         _ => {
             tracing::info!("display: refused a request without the address's key");
-            ("404 Not Found", NOT_FOUND)
+            ("404 Not Found", "text/html; charset=utf-8", NOT_FOUND.as_bytes())
         }
     };
     let head = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
     );
     conn.write_all(head.as_bytes())?;
-    conn.write_all(body.as_bytes())?;
+    conn.write_all(body)?;
     Ok(())
 }
 
@@ -366,6 +374,7 @@ mod tests {
         assert_eq!(route("/abcd2345/", k), Route::Page);
         assert_eq!(route("/abcd2345?x=1", k), Route::Page);
         assert_eq!(route("/abcd2345/stream", k), Route::Stream);
+        assert_eq!(route("/apple-touch-icon.png", k), Route::Icon, "the icon is no secret");
         assert_eq!(route("/", k), Route::Unknown);
         assert_eq!(route("/stream", k), Route::Unknown);
         assert_eq!(route("/abcd2346/stream", k), Route::Unknown);

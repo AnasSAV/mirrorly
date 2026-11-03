@@ -26,9 +26,8 @@ cbuffer Quad : register(b0) {
     float4 corner[4]; // xy = NDC, zw = uv; order TL, TR, BL, BR
     float4 color;
     float4 rect;      // the quad in pixels: x, y, w, h
-    float4 shape;     // x = corner radius in pixels
+    float4 shape;     // x = corner radius in pixels, yzw = the frame's colour
 };
-static const float3 BEZEL = float3(0.04, 0.04, 0.045);
 struct VsOut { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
 VsOut vs_main(uint id : SV_VertexID) {
     VsOut o;
@@ -71,7 +70,7 @@ float4 ps_video(VsOut i) : SV_Target {
     float2 q = abs(i.pos.xy - rect.xy - half_size) - (half_size - shape.x);
     float d = length(max(q, 0)) + min(max(q.x, q.y), 0) - shape.x;
     float a = saturate(0.5 - d);
-    return float4(lerp(BEZEL, saturate(rgb), a), 1);
+    return float4(lerp(shape.yzw, saturate(rgb), a), 1);
 }
 float4 ps_dot(VsOut i) : SV_Target {
     float d = length(i.uv - 0.5) * 2.0;           // 0 at centre, 1 at the rim
@@ -111,6 +110,8 @@ pub struct Renderer {
 
 /// What to draw this frame.
 pub struct Scene<'a> {
+    /// The frame around the screen (the theme's).
+    pub frame_color: [f32; 3],
     pub picture: Option<(&'a ID3D11Texture2D, u32)>,
     /// Where the picture goes, in back-buffer pixels.
     pub view: Rect,
@@ -233,7 +234,8 @@ impl Renderer {
         let (bw, bh) = (self.size.0 as f64, self.size.1 as f64);
         unsafe {
             let ctx = &self.context.clone();
-            ctx.ClearRenderTargetView(&rtv, &[0.04, 0.04, 0.045, 1.0]);
+            let [r, g, b] = scene.frame_color;
+            ctx.ClearRenderTargetView(&rtv, &[r, g, b, 1.0]);
             ctx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), None);
             ctx.RSSetViewports(Some(&[D3D11_VIEWPORT {
                 TopLeftX: 0.0,
@@ -260,7 +262,7 @@ impl Renderer {
                 });
                 let v = scene.view;
                 let rect = [v.x as f32, v.y as f32, v.w as f32, v.h as f32];
-                self.upload(quad(v, bw, bh, uvs), [0.0; 4], rect, [scene.corner_radius as f32, 0.0, 0.0, 0.0])?;
+                self.upload(quad(v, bw, bh, uvs), [0.0; 4], rect, [scene.corner_radius as f32, r, g, b])?;
                 ctx.OMSetBlendState(None, None, 0xffff_ffff);
                 ctx.PSSetShader(&self.ps_video, None);
                 ctx.PSSetShaderResources(0, Some(&[Some(y), Some(uv)]));

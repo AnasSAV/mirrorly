@@ -100,6 +100,8 @@ pub struct BarState {
     pub display: bool,
     /// Recording the screen: the record button is a red stop button.
     pub recording: bool,
+    /// Windows is in light mode.
+    pub light: bool,
 }
 
 struct Proc {
@@ -458,20 +460,20 @@ impl Bar {
         let s = self.scale;
         let (w, h) = (self.size.0 as f64, self.size.1 as f64);
         let t = self.toolbar(st.shelf.is_some(), st.display);
+        let theme = crate::theme::of(st.light);
         unsafe {
             let bounds = RECT { left: 0, top: 0, right: self.size.0, bottom: self.size.1 };
             self.rt.BindDC(self.dc, &bounds)?;
             self.rt.BeginDraw();
             self.rt.Clear(Some(&rgba(0.0, 0.0, 0.0, 0.0)));
             // Rounded on top; square where it meets the window below.
-            let body = rgba(0.155, 0.155, 0.165, 1.0);
             let r = (12.0 * s) as f32;
-            let brush = self.color(body)?;
+            let brush = self.color(theme.bar)?;
             let rr = D2D1_ROUNDED_RECT { rect: rect(Rect { x: 0.0, y: 0.0, w, h }), radiusX: r, radiusY: r };
             self.rt.FillRoundedRectangle(&rr, &brush);
             self.rt.FillRectangle(&rect(Rect { x: 0.0, y: h / 2.0, w, h: h / 2.0 }), &brush);
             // A hairline where the bar ends and the window's frame begins.
-            let line = self.color(rgba(0.0, 0.0, 0.0, 0.35))?;
+            let line = self.color(theme.bar_line)?;
             self.rt.FillRectangle(&rect(Rect { x: 0.0, y: t.bar.h - 1.0, w, h: 1.0 }), &line);
 
             for &(c, cx, cy, r) in &t.lights {
@@ -498,7 +500,7 @@ impl Bar {
             for &(c, r) in &t.icons {
                 if st.hover == Some(c) {
                     let rr = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: (6.0 * s) as f32, radiusY: (6.0 * s) as f32 };
-                    let b = self.color(rgba(1.0, 1.0, 1.0, 0.18))?;
+                    let b = self.color(theme.bar_hover)?;
                     self.rt.FillRoundedRectangle(&rr, &b);
                 }
                 let g = match c {
@@ -513,21 +515,21 @@ impl Bar {
                     _ => GLYPH_ROTATE,
                 };
                 let f = self.fonts.icons.clone();
-                let col = if c == Control::Record && st.recording { rgba(1.0, 0.33, 0.30, 1.0) } else { rgba(1.0, 1.0, 1.0, 0.95) };
+                let col = if c == Control::Record && st.recording { rgba(0.90, 0.26, 0.24, 1.0) } else { theme.bar_icon };
                 self.text(g, &f, r, col)?;
             }
             if let (Some(r), Some(label)) = (t.shelf, &st.shelf) {
-                let a = if st.hover == Some(Control::Shelf) { 1.0 } else { 0.85 };
+                let a = if st.hover == Some(Control::Shelf) { 1.0 } else { 0.88 };
                 let rr = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: (r.h / 2.0) as f32, radiusY: (r.h / 2.0) as f32 };
-                let b = self.color(rgba(0.30, 0.38, 0.98, a))?;
+                let b = self.color(D2D1_COLOR_F { a, ..theme.accent })?;
                 self.rt.FillRoundedRectangle(&rr, &b);
                 let icon = Rect { x: r.x + 6.0 * s, y: r.y, w: 18.0 * s, h: r.h };
                 let glyph = if st.shelf_media { GLYPH_PHOTO } else { GLYPH_DOCUMENT };
                 let f = self.fonts.chip_icon.clone();
-                self.text(glyph, &f, icon, rgba(1.0, 1.0, 1.0, 1.0))?;
+                self.text(glyph, &f, icon, theme.on_accent)?;
                 let lr = Rect { x: icon.x + icon.w + 3.0 * s, y: r.y, w: r.w - icon.w - 18.0 * s, h: r.h };
                 let f = self.fonts.chip.clone();
-                self.text(label, &f, lr, rgba(1.0, 1.0, 1.0, 1.0))?;
+                self.text(label, &f, lr, theme.on_accent)?;
             }
             self.rt.EndDraw(None, None)?;
         }
@@ -591,5 +593,6 @@ pub fn state_of(c: &crate::state::Chrome, hover: Option<Control>, display: bool,
         disconnected: c.disconnected,
         display,
         recording,
+        light: c.theme.light,
     }
 }

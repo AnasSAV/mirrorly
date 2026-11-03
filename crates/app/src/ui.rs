@@ -9,10 +9,10 @@ use input::geom::Rect;
 use windows::{
     Win32::Graphics::{
         Direct2D::{
-            Common::{D2D_RECT_F, D2D1_ALPHA_MODE_IGNORE, D2D1_COLOR_F, D2D1_PIXEL_FORMAT},
+            Common::{D2D_RECT_F, D2D_SIZE_U, D2D1_ALPHA_MODE_IGNORE, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_PIXEL_FORMAT},
             D2D1_BITMAP_OPTIONS_CANNOT_DRAW, D2D1_BITMAP_OPTIONS_TARGET, D2D1_BITMAP_PROPERTIES1,
             D2D1_DEVICE_CONTEXT_OPTIONS_NONE, D2D1_DRAW_TEXT_OPTIONS_NONE, D2D1_ELLIPSE, D2D1_FACTORY_OPTIONS,
-            D2D1_FACTORY_TYPE_SINGLE_THREADED, D2D1_ROUNDED_RECT, D2D1CreateFactory, ID2D1Bitmap1,
+            D2D1_FACTORY_TYPE_SINGLE_THREADED, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, D2D1_ROUNDED_RECT, D2D1CreateFactory, ID2D1Bitmap1,
             ID2D1DeviceContext, ID2D1Factory1, ID2D1SolidColorBrush,
         },
         Direct3D11::ID3D11Device,
@@ -31,10 +31,38 @@ use windows::{
 use crate::{
     layout::Control,
     onboarding::{STEPS, StepState, Welcome},
+    theme::Theme,
 };
+
+/// The logo and its mark, for [dark, light] pages.
+const LOGO: [&[u8]; 2] = [include_bytes!("../assets/logo-dark.png"), include_bytes!("../assets/logo-light.png")];
+const MARK: [&[u8]; 2] = [include_bytes!("../assets/mark-dark.png"), include_bytes!("../assets/mark-light.png")];
+
+/// A PNG (8-bit RGBA) as a Direct2D bitmap.
+fn picture(ctx: &ID2D1DeviceContext, png_bytes: &[u8]) -> Result<ID2D1Bitmap1> {
+    let mut reader = png::Decoder::new(png_bytes).read_info()?;
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf)?;
+    anyhow::ensure!(info.color_type == png::ColorType::Rgba && info.bit_depth == png::BitDepth::Eight, "logo pictures are RGBA");
+    // Direct2D wants premultiplied BGRA.
+    for px in buf.as_chunks_mut::<4>().0 {
+        let a = px[3] as u32;
+        let pm = |c: u8| ((c as u32 * a + 127) / 255) as u8;
+        (px[0], px[1], px[2]) = (pm(px[2]), pm(px[1]), pm(px[0]));
+    }
+    let props = D2D1_BITMAP_PROPERTIES1 {
+        pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED },
+        dpiX: 96.0,
+        dpiY: 96.0,
+        ..Default::default()
+    };
+    let size = D2D_SIZE_U { width: info.width, height: info.height };
+    Ok(unsafe { ctx.CreateBitmap(size, Some(buf.as_ptr().cast()), info.line_size as u32, &props)? })
+}
 
 /// One frame's worth of chrome.
 pub struct UiFrame<'a> {
+    pub theme: &'static Theme,
     pub view: Rect,
     /// Status page (title, detail) when there is no video.
     pub status: Option<(&'a str, &'a str)>,
@@ -77,6 +105,10 @@ pub struct Ui {
     brush: ID2D1SolidColorBrush,
     target: Option<ID2D1Bitmap1>,
     scale: f32,
+    /// The logo and its mark, for [dark, light] pages.
+    logo: [ID2D1Bitmap1; 2],
+    mark: [ID2D1Bitmap1; 2],
+    theme: &'static Theme,
 }
 
 // Segoe Fluent Icons / MDL2 code points.
@@ -130,6 +162,8 @@ impl Ui {
             }
             body.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR)?;
             let brush = ctx.CreateSolidColorBrush(&rgba(1.0, 1.0, 1.0, 1.0), None)?;
+            let logo = [picture(&ctx, LOGO[0])?, picture(&ctx, LOGO[1])?];
+            let mark = [picture(&ctx, MARK[0])?, picture(&ctx, MARK[1])?];
             Ok(Self {
                 ctx,
                 mono,
@@ -147,6 +181,9 @@ impl Ui {
                 brush,
                 target: None,
                 scale,
+                logo,
+                mark,
+                theme: Default::default(),
             })
         }
     }
@@ -174,7 +211,11 @@ impl Ui {
             if let Some(t) = &self.target {
                 self.ctx.SetTarget(t);
             }
+            self.theme = f.theme;
             self.ctx.BeginDraw();
+            if f.status.is_some() || f.display.is_some() {
+                self.page(f.view);
+            }
             match (f.welcome, f.status) {
                 _ if f.display.is_some() => self.display_page(f.view, f.display.unwrap_or_default(), f.hover == Some(Control::StopDisplay)),
                 (Some(w), Some((title, detail))) if !f.disconnected => self.welcome_page(f.view, w, title, detail),
@@ -213,16 +254,32 @@ impl Ui {
         }
     }
 
+    /// The page behind everything shown instead of the phone's screen.
+    fn page(&self, view: Rect) {
+        let radius = crate::layout::corner_radius(view) as f32;
+        unsafe {
+            let rr = D2D1_ROUNDED_RECT { rect: rect(view), radiusX: radius, radiusY: radius };
+            self.ctx.FillRoundedRectangle(&rr, self.color(self.theme.page));
+        }
+    }
+
+    /// One of the logo's pictures, for the current theme.
+    fn art(&self, pictures: &[ID2D1Bitmap1; 2], r: Rect) {
+        let picture = &pictures[self.theme.light as usize];
+        unsafe { self.ctx.DrawBitmap(picture, Some(&rect(r)), 1.0, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, None, None) };
+    }
+
     /// Disconnected, with iPhones to choose from: one row each.
     fn picker_page(&self, view: Rect, phones: &[device::phones::Phone], hover: Option<Control>) {
         let s = self.scale as f64;
+        let t = self.theme;
         let top = crate::layout::picker_top(view, s);
-        self.text("Choose an iPhone", &self.heading, Rect { x: view.x, y: top, w: view.w, h: 30.0 * s }, rgba(1.0, 1.0, 1.0, 1.0));
+        self.text("Choose an iPhone", &self.heading, Rect { x: view.x, y: top, w: view.w, h: 30.0 * s }, t.text);
         self.text(
             "Mirrorly is disconnected. Click the iPhone to mirror.",
             &self.body,
             Rect { x: view.x + 20.0 * s, y: top + 38.0 * s, w: view.w - 40.0 * s, h: 40.0 * s },
-            rgba(0.62, 0.62, 0.66, 1.0),
+            t.text_soft,
         );
         for (i, (row, forget)) in crate::layout::picker_rows(view, s, phones.len()).into_iter().enumerate() {
             let p = &phones[i];
@@ -230,17 +287,16 @@ impl Ui {
             let over_forget = hover == Some(Control::Forget(i));
             unsafe {
                 let rr = D2D1_ROUNDED_RECT { rect: rect(row), radiusX: (14.0 * s) as f32, radiusY: (14.0 * s) as f32 };
-                let a = if over_row { 0.14 } else { 0.07 };
-                self.ctx.FillRoundedRectangle(&rr, self.color(rgba(1.0, 1.0, 1.0, a)));
+                self.ctx.FillRoundedRectangle(&rr, self.color(if over_row { t.row_hover } else { t.row }));
                 if over_row {
-                    self.ctx.DrawRoundedRectangle(&rr, self.color(rgba(0.40, 0.52, 1.0, 0.9)), (1.5 * s) as f32, None);
+                    self.ctx.DrawRoundedRectangle(&rr, self.color(t.accent_ink), (1.5 * s) as f32, None);
                 }
             }
             let icon = Rect { x: row.x + 10.0 * s, y: row.y, w: 34.0 * s, h: row.h };
-            self.text(GLYPH_PHONE, &self.icons, icon, rgba(0.80, 0.84, 1.0, 1.0));
+            self.text(GLYPH_PHONE, &self.icons, icon, t.accent_ink);
             let text_x = icon.x + icon.w + 8.0 * s;
             let text_w = forget.x - text_x - 8.0 * s;
-            self.text(&p.name, &self.chip, Rect { x: text_x, y: row.y + 9.0 * s, w: text_w, h: 22.0 * s }, rgba(1.0, 1.0, 1.0, 1.0));
+            self.text(&p.name, &self.chip, Rect { x: text_x, y: row.y + 9.0 * s, w: text_w, h: 22.0 * s }, t.text);
             let how = if p.usb { "Plugged in" } else { "Wi-Fi, when nearby" };
             let detail = if p.ios_version.is_empty() { how.to_string() } else { format!("iOS {} · {how}", p.ios_version) };
             let dot = Rect { x: text_x, y: row.y + 33.0 * s, w: 8.0 * s, h: 8.0 * s };
@@ -253,15 +309,15 @@ impl Ui {
                 unsafe { self.ctx.FillEllipse(&e, self.color(rgba(0.20, 0.78, 0.35, 1.0))) };
             }
             let dx = if p.usb { 13.0 * s } else { 0.0 };
-            self.text(&detail, &self.step_detail, Rect { x: text_x + dx, y: row.y + 29.0 * s, w: text_w - dx, h: 20.0 * s }, rgba(0.62, 0.62, 0.66, 1.0));
+            self.text(&detail, &self.step_detail, Rect { x: text_x + dx, y: row.y + 29.0 * s, w: text_w - dx, h: 20.0 * s }, t.text_soft);
             if p.remembered {
                 if over_forget {
                     unsafe {
                         let rr = D2D1_ROUNDED_RECT { rect: rect(forget), radiusX: (8.0 * s) as f32, radiusY: (8.0 * s) as f32 };
-                        self.ctx.FillRoundedRectangle(&rr, self.color(rgba(1.0, 0.35, 0.35, 0.18)));
+                        self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.90, 0.25, 0.25, 0.16)));
                     }
                 }
-                let c = if over_forget { rgba(1.0, 0.55, 0.52, 1.0) } else { rgba(0.62, 0.62, 0.66, 1.0) };
+                let c = if over_forget { rgba(0.85, 0.27, 0.25, 1.0) } else { t.text_soft };
                 self.text("Forget", &self.toast, forget, c);
             }
         }
@@ -269,62 +325,62 @@ impl Ui {
 
     /// Connect again, on the disconnected page.
     fn connect_button(&self, view: Rect, hover: bool) {
-        self.page_button(view, "Connect", (0.30, 0.42, 1.0), hover);
+        self.page_button(view, "Connect", self.theme.accent, self.theme.on_accent, hover);
     }
 
     /// The pill button under a page's text.
-    fn page_button(&self, view: Rect, label: &str, (r, g, b): (f32, f32, f32), hover: bool) {
+    fn page_button(&self, view: Rect, label: &str, fill: D2D1_COLOR_F, ink: D2D1_COLOR_F, hover: bool) {
         let rc = crate::layout::connect_button(view, self.scale as f64);
         unsafe {
             let rr = D2D1_ROUNDED_RECT { rect: rect(rc), radiusX: (rc.h / 2.0) as f32, radiusY: (rc.h / 2.0) as f32 };
-            let a = if hover { 1.0 } else { 0.88 };
-            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(r, g, b, a)));
+            let c = D2D1_COLOR_F { a: if hover { 1.0 } else { 0.9 }, ..fill };
+            self.ctx.FillRoundedRectangle(&rr, self.color(c));
         }
-        self.text(label, &self.title, Rect { y: rc.y - 1.0, ..rc }, rgba(1.0, 1.0, 1.0, 1.0));
+        self.text(label, &self.title, Rect { y: rc.y - 1.0, ..rc }, ink);
     }
 
     /// The iPad is a display: where to point its Safari, and Stop. (Once
     /// the iPad shows the screen this window is hidden.)
     fn display_page(&self, view: Rect, url: &str, hover: bool) {
         let s = self.scale as f64;
-        unsafe { self.ctx.FillRectangle(&rect(view), self.color(rgba(0.0, 0.0, 0.0, 1.0))) };
+        let t = self.theme;
         let cx = view.x + view.w / 2.0;
         let cy = view.y + view.h * 0.42;
         let w = view.w * 0.84;
         let line = |y: f64, h: f64| Rect { x: cx - w / 2.0, y: cy + y * s, w, h: h * s };
-        let grey = rgba(0.62, 0.62, 0.66, 1.0);
-        self.text(GLYPH_DISPLAY, &self.big_icon, Rect { x: cx - 40.0 * s, y: cy - 176.0 * s, w: 80.0 * s, h: 70.0 * s }, rgba(0.55, 0.65, 1.0, 1.0));
-        self.text("Your iPad is a display", &self.title, line(-96.0, 30.0), rgba(1.0, 1.0, 1.0, 1.0));
-        self.text("On the iPad, open Safari and go to", &self.body, line(-58.0, 22.0), grey);
-        self.text(url, &self.title, line(-34.0, 30.0), rgba(0.50, 0.62, 1.0, 1.0));
+        self.text(GLYPH_DISPLAY, &self.big_icon, Rect { x: cx - 40.0 * s, y: cy - 176.0 * s, w: 80.0 * s, h: 70.0 * s }, t.accent_ink);
+        self.text("Your iPad is a display", &self.title, line(-96.0, 30.0), t.text);
+        self.text("On the iPad, open Safari and go to", &self.body, line(-58.0, 22.0), t.text_soft);
+        self.text(url, &self.title, line(-34.0, 30.0), t.accent_ink);
         self.text(
             "then tap Start. Share › Add to Home Screen makes it one tap next time. This window steps aside once the iPad shows your screen.",
             &self.body,
             line(4.0, 100.0),
-            grey,
+            t.text_soft,
         );
-        self.page_button(view, "Stop", (0.86, 0.27, 0.25), hover);
+        self.page_button(view, "Stop", rgba(0.80, 0.25, 0.24, 1.0), rgba(1.0, 1.0, 1.0, 1.0), hover);
     }
 
     /// Files from the PC are over the window: say what dropping does.
     fn drop_target(&self, view: Rect) {
         let s = self.scale as f64;
+        let t = self.theme;
         let radius = crate::layout::corner_radius(view) as f32;
         unsafe {
             let rr = D2D1_ROUNDED_RECT { rect: rect(view), radiusX: radius, radiusY: radius };
-            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.07, 0.09, 0.20, 0.78)));
-            self.ctx.DrawRoundedRectangle(&rr, self.color(rgba(0.40, 0.52, 1.0, 1.0)), (3.0 * s) as f32, None);
+            self.ctx.FillRoundedRectangle(&rr, self.color(t.drop_scrim));
+            self.ctx.DrawRoundedRectangle(&rr, self.color(t.accent_ink), (3.0 * s) as f32, None);
         }
         let cx = view.x + view.w / 2.0;
         let cy = view.y + view.h * 0.45;
         let w = view.w * 0.84;
-        self.text(GLYPH_PASTE, &self.big_icon, Rect { x: cx - 40.0 * s, y: cy - 86.0 * s, w: 80.0 * s, h: 70.0 * s }, rgba(0.55, 0.65, 1.0, 1.0));
-        self.text("Drop to paste on iPhone", &self.title, Rect { x: cx - w / 2.0, y: cy - 10.0 * s, w, h: 30.0 * s }, rgba(1.0, 1.0, 1.0, 1.0));
+        self.text(GLYPH_PASTE, &self.big_icon, Rect { x: cx - 40.0 * s, y: cy - 86.0 * s, w: 80.0 * s, h: 70.0 * s }, t.accent_ink);
+        self.text("Drop to paste on iPhone", &self.title, Rect { x: cx - w / 2.0, y: cy - 10.0 * s, w, h: 30.0 * s }, t.text);
         self.text(
             "It goes into the app that is open, as if you pressed ⌘V there: a chat, a note, a Files folder.",
             &self.body,
             Rect { x: cx - w / 2.0, y: cy + 28.0 * s, w, h: 80.0 * s },
-            rgba(0.75, 0.77, 0.85, 1.0),
+            t.text_soft,
         );
     }
 
@@ -336,46 +392,47 @@ impl Ui {
         let r = Rect { x: view.x + (view.w - w) / 2.0, y: view.y + view.h - h - 44.0 * s, w, h };
         unsafe {
             let rr = D2D1_ROUNDED_RECT { rect: rect(r), radiusX: (h / 2.0) as f32, radiusY: (h / 2.0) as f32 };
-            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.10, 0.10, 0.11, 0.92)));
+            self.ctx.FillRoundedRectangle(&rr, self.color(self.theme.toast));
         }
-        self.text(text, &self.toast, Rect { x: r.x + 12.0 * s, w: r.w - 24.0 * s, ..r }, rgba(1.0, 1.0, 1.0, 1.0));
+        self.text(text, &self.toast, Rect { x: r.x + 12.0 * s, w: r.w - 24.0 * s, ..r }, self.theme.on_toast);
     }
 
     fn status_page(&self, view: Rect, title: &str, detail: &str) {
         let s = self.scale as f64;
+        let t = self.theme;
         let cx = view.x + view.w / 2.0;
         let cy = view.y + view.h * 0.42;
         let w = view.w * 0.8;
-        self.text(GLYPH_PHONE, &self.big_icon, Rect { x: cx - 40.0 * s, y: cy - 90.0 * s, w: 80.0 * s, h: 70.0 * s }, rgba(0.6, 0.6, 0.63, 1.0));
-        self.text(title, &self.title, Rect { x: cx - w / 2.0, y: cy - 10.0 * s, w, h: 30.0 * s }, rgba(1.0, 1.0, 1.0, 1.0));
-        self.text(detail, &self.body, Rect { x: cx - w / 2.0, y: cy + 28.0 * s, w, h: view.h * 0.4 }, rgba(0.62, 0.62, 0.66, 1.0));
+        // The mark: its picture is 1256 x 986.
+        let mw = 84.0 * s;
+        let mh = mw * 986.0 / 1256.0;
+        self.art(&self.mark, Rect { x: cx - mw / 2.0, y: cy - 28.0 * s - mh, w: mw, h: mh });
+        self.text(title, &self.title, Rect { x: cx - w / 2.0, y: cy - 10.0 * s, w, h: 30.0 * s }, t.text);
+        self.text(detail, &self.body, Rect { x: cx - w / 2.0, y: cy + 28.0 * s, w, h: view.h * 0.4 }, t.text_soft);
     }
 
     /// First run: what Mirrorly is, and a live checklist of how to connect.
     fn welcome_page(&self, view: Rect, w: &Welcome, now_title: &str, now_detail: &str) {
         let s = self.scale as f64;
+        let t = self.theme;
         let pad = 26.0 * s;
         let x = view.x + pad;
         let width = view.w - 2.0 * pad;
         let mut y = view.y + view.h * 0.09;
 
-        // App badge: the Mirrorly blue tile with a phone.
-        let badge = 58.0 * s;
-        let br = Rect { x: view.x + (view.w - badge) / 2.0, y, w: badge, h: badge };
-        unsafe {
-            let rr = D2D1_ROUNDED_RECT { rect: rect(br), radiusX: (14.0 * s) as f32, radiusY: (14.0 * s) as f32 };
-            self.ctx.FillRoundedRectangle(&rr, self.color(rgba(0.30, 0.38, 0.98, 1.0)));
-        }
-        self.text(GLYPH_PHONE, &self.icons, Rect { y: br.y + 2.0 * s, ..br }, rgba(1.0, 1.0, 1.0, 1.0));
-        y += badge + 18.0 * s;
+        // The logo: its picture is 2003 x 493.
+        let lw = (230.0 * s).min(width);
+        let lh = lw * 493.0 / 2003.0;
+        self.art(&self.logo, Rect { x: view.x + (view.w - lw) / 2.0, y, w: lw, h: lh });
+        y += lh + 22.0 * s;
 
-        self.text("Welcome to Mirrorly", &self.heading, Rect { x: view.x, y, w: view.w, h: 30.0 * s }, rgba(1.0, 1.0, 1.0, 1.0));
+        self.text("Welcome to Mirrorly", &self.heading, Rect { x: view.x, y, w: view.w, h: 30.0 * s }, t.text);
         y += 32.0 * s;
         self.text(
             "See and control your iPhone from this PC.",
             &self.body,
             Rect { x: view.x + pad, y, w: view.w - 2.0 * pad, h: 22.0 * s },
-            rgba(0.62, 0.62, 0.66, 1.0),
+            t.text_soft,
         );
         y += 44.0 * s;
 
@@ -391,19 +448,19 @@ impl Ui {
             };
             let (title_col, detail_col) = match state {
                 StepState::Done => {
-                    unsafe { self.ctx.FillEllipse(&e, self.color(rgba(0.20, 0.78, 0.35, 1.0))) };
-                    self.text(GLYPH_CHECK, &self.step_icon, c, rgba(1.0, 1.0, 1.0, 1.0));
-                    (rgba(0.75, 0.75, 0.78, 1.0), rgba(0.48, 0.48, 0.52, 1.0))
+                    unsafe { self.ctx.FillEllipse(&e, self.color(t.done)) };
+                    self.text(GLYPH_CHECK, &self.step_icon, c, t.on_done);
+                    (t.text_soft, t.text_faint)
                 }
                 StepState::Active => {
-                    unsafe { self.ctx.FillEllipse(&e, self.color(rgba(0.30, 0.47, 1.0, 1.0))) };
-                    self.text(&(i + 1).to_string(), &self.step_num, c, rgba(1.0, 1.0, 1.0, 1.0));
-                    (rgba(1.0, 1.0, 1.0, 1.0), rgba(0.70, 0.70, 0.74, 1.0))
+                    unsafe { self.ctx.FillEllipse(&e, self.color(t.accent)) };
+                    self.text(&(i + 1).to_string(), &self.step_num, c, t.on_accent);
+                    (t.text, t.text_soft)
                 }
                 StepState::Pending => {
-                    unsafe { self.ctx.DrawEllipse(&e, self.color(rgba(0.40, 0.40, 0.44, 1.0)), (1.5 * s) as f32, None) };
-                    self.text(&(i + 1).to_string(), &self.step_num, c, rgba(0.55, 0.55, 0.6, 1.0));
-                    (rgba(0.62, 0.62, 0.66, 1.0), rgba(0.45, 0.45, 0.49, 1.0))
+                    unsafe { self.ctx.DrawEllipse(&e, self.color(t.outline), (1.5 * s) as f32, None) };
+                    self.text(&(i + 1).to_string(), &self.step_num, c, t.text_faint);
+                    (t.text_soft, t.text_faint)
                 }
             };
             self.text(title, &self.step_title, Rect { x: text_x, y: y + 1.0 * s, w: text_w, h: 20.0 * s }, title_col);
@@ -413,18 +470,19 @@ impl Ui {
 
         // What Mirrorly is doing right now.
         y += 6.0 * s;
-        self.text(now_title, &self.step_title, Rect { x, y, w: width, h: 20.0 * s }, rgba(0.45, 0.62, 1.0, 1.0));
-        self.text(now_detail, &self.step_detail, Rect { x, y: y + 21.0 * s, w: width, h: 60.0 * s }, rgba(0.62, 0.62, 0.66, 1.0));
+        self.text(now_title, &self.step_title, Rect { x, y, w: width, h: 20.0 * s }, t.accent_ink);
+        self.text(now_detail, &self.step_detail, Rect { x, y: y + 21.0 * s, w: width, h: 60.0 * s }, t.text_soft);
     }
 
+    /// The latency overlay: always light on dark, over the picture.
     fn stats(&self, view: Rect, top: f64, text: &str) {
         let s = self.scale as f64;
         let lines = text.lines().count().max(1) as f64;
         let pad = 6.0 * s;
         let r = Rect { x: view.x, y: top, w: (380.0 * s).min(view.w), h: lines * 15.0 * s + 2.0 * pad };
-        unsafe { self.ctx.FillRectangle(&rect(r), self.color(rgba(0.0, 0.0, 0.0, 0.72))) };
+        unsafe { self.ctx.FillRectangle(&rect(r), self.color(rgba(0.08, 0.09, 0.11, 0.78))) };
         let inner = Rect { x: r.x + pad, y: r.y + pad, w: r.w - 2.0 * pad, h: r.h - pad };
-        self.text(text, &self.mono, inner, rgba(0.6, 1.0, 0.6, 1.0));
+        self.text(text, &self.mono, inner, rgba(0.82, 0.93, 0.96, 1.0));
     }
 }
 

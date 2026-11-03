@@ -167,6 +167,7 @@ pub fn spawn(
                 )
             });
             let scene = Scene {
+                frame_color: shared.chrome.lock().unwrap().theme.frame,
                 picture: frame.as_ref().map(|f| (&f.picture.texture, f.picture.index)),
                 view: scene_view,
                 uv_max,
@@ -176,14 +177,15 @@ pub fn spawn(
             };
             // Window chrome: status or welcome page (no video), drop target,
             // messages, stats. (The hover bar is its own window: bar.rs.)
-            let (status, welcome, drop_hover, toast, disconnected, hover, phones, display) = {
+            let (status, welcome, drop_hover, toast, disconnected, hover, phones, display, theme) = {
                 let c = shared.chrome.lock().unwrap();
                 let status = frame.is_none().then(|| c.status.clone());
                 let welcome = if frame.is_none() { c.welcome.clone() } else { None };
                 let phones = if c.disconnected { c.phones.clone() } else { Vec::new() };
-                (status, welcome, c.drop_hover, c.toast.clone(), c.disconnected, c.hover, phones, c.display.clone())
+                (status, welcome, c.drop_hover, c.toast.clone(), c.disconnected, c.hover, phones, c.display.clone(), c.theme)
             };
             let ui_frame = UiFrame {
+                theme,
                 view: scene_view,
                 status: status.as_ref().map(|(t, d)| (t.as_str(), d.as_str())),
                 welcome: welcome.as_ref(),

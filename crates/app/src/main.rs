@@ -41,6 +41,7 @@ mod render;
 mod sink;
 mod state;
 mod status;
+mod theme;
 mod tray;
 mod ui;
 mod winclip;
@@ -314,6 +315,7 @@ impl App {
         self.window = Some(window.clone());
         {
             let mut c = self.shared.chrome.lock().unwrap();
+            c.theme = theme::for_system(window.theme() == Some(winit::window::Theme::Light));
             c.status = status::starting();
             if onboarding::first_run() {
                 c.welcome = Some(onboarding::Welcome::default());
@@ -1419,6 +1421,12 @@ impl ApplicationHandler<UserEvent> for App {
                 self.shared.chrome.lock().unwrap().scale = scale_factor;
                 self.shared.view.lock().unwrap().bezel = BEZEL * scale_factor;
                 self.place_bar();
+            }
+            // Windows' light or dark mode changed: follow it.
+            WindowEvent::ThemeChanged(t) => {
+                self.shared.chrome.lock().unwrap().theme = theme::for_system(t == winit::window::Theme::Light);
+                self.sync_bar();
+                self.slot.request_redraw();
             }
             WindowEvent::Focused(false) => self.release_all(),
             // Our own shelf being dragged out passes over the window first:

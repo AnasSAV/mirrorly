@@ -28,6 +28,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 LicenseFile=..\LICENSE
 SetupIconFile=mirrorly.ico
+; Titanium & Ice, from make_icon.py (100 % and 200 % scale).
+WizardImageFile=wizard.bmp,wizard@2x.bmp
+WizardSmallImageFile=wizard-small.bmp,wizard-small@2x.bmp
 UninstallDisplayIcon={app}\Mirrorly.exe
 OutputDir=..\dist
 OutputBaseFilename=Mirrorly-Setup-{#AppVersion}
