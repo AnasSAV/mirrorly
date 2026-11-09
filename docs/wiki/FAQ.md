@@ -11,9 +11,16 @@ off whenever you like (*Settings › Privacy & Security*); Mirrorly then stops
 working until it's back on.
 
 **Does anything leave my PC or phone?**
-No. Video, input, files and the clipboard go directly between the PC and the
-phone, over USB or your own network. Mirrorly has no servers, accounts,
-analytics or update checks.
+Your screen, input, files and clipboard don't: they go directly between the
+PC and the phone, over USB or your own network. Mirrorly has no servers,
+accounts, analytics or update checks. The one exception is setting up
+Apple's developer services on a phone, the first time and often after it
+restarts: like Xcode, Mirrorly downloads Apple's Developer Disk Image from
+the [DeveloperDiskImage](https://github.com/doronz88/DeveloperDiskImage)
+repository on GitHub (once), and asks Apple's signing server
+(`gs.apple.com`) to approve it for the phone, which sends the phone's chip
+identifiers (including its ECID) over HTTP. Start Mirrorly with
+`--no-auto-ddi` to turn that off.
 
 **Which iPhones and iPads work?**
 Any on **iOS / iPadOS 27 or later**: Apple's screen sharing and control
@@ -40,7 +47,9 @@ window is in front, which made it unreliable.
 **Can two iPhones be mirrored at once?**
 No, one at a time. Disconnect and pick another in the list to switch.
 
-**Why isn't Mirrorly signed? SmartScreen warns about it.**
-Code-signing certificates cost money every year; it may come later. Each
-release lists SHA-256 checksums, and the source is all here to build
-yourself (see [[Building from source|Building-from-Source]]).
+**Why isn't Mirrorly signed? SmartScreen warns, and Smart App Control blocks it.**
+Signing is being set up through the SignPath Foundation's free code signing
+for open-source projects; see the
+[code signing policy](https://github.com/AnasSAV/mirrorly#code-signing-policy).
+Until then, each release lists SHA-256 checksums, and the source is all here
+to build yourself (see [[Building from source|Building-from-Source]]).

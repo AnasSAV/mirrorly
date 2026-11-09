@@ -7,7 +7,7 @@ Mirrorly shows your iPhone's or iPad's screen in a window on your Windows PC
 and lets you use it with your mouse and keyboard, over a USB cable or Wi-Fi.
 It moves files and the clipboard between the two, takes screenshots and
 recordings, and can turn an iPad into a second monitor for the PC. No Mac,
-no jailbreak, no account, and nothing leaves your own devices.
+no jailbreak and no account, and your screen and files stay on your own devices.
 
 **[Download the latest version](https://github.com/AnasSAV/mirrorly/releases/latest)**
 

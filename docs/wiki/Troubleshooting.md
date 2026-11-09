@@ -9,6 +9,7 @@ on Developer Mode*, …). Start there; the tables below cover the rest.
 |---|---|
 | "Update to iOS 27" / "Update to iPadOS 27" | Apple's screen sharing service needs iOS / iPadOS 27: *Settings › General › Software Update*. |
 | "Apple Devices is required" | Install [Apple Devices](https://apps.microsoft.com/detail/9np83lwlpz9k) from the Microsoft Store, then plug the iPhone in again. |
+| "Smart App Control blocked an app" | Windows blocks unsigned apps it doesn't know yet, and Mirrorly isn't signed yet ([code signing policy](https://github.com/AnasSAV/mirrorly#code-signing-policy)). Smart App Control can't make an exception for one app: the only way for now is to turn it off (*Windows Security › App & browser control › Smart App Control*), which on many Windows versions can't be undone without resetting Windows. |
 | Stuck on "Trust this computer" | Unlock the iPhone, tap **Trust**, enter the passcode. |
 | No Developer Mode switch in Settings | Keep Mirrorly open with the iPhone plugged in: Mirrorly asks iOS to show it. Then *Settings › Privacy & Security › Developer Mode*. |
 | Mirrorly connects to the wrong iPhone | Disconnect (power button), then click the right one in the list. |

@@ -35,8 +35,10 @@ Wi-Fi, needs no Mac, no jailbreak and no account, and adds only about **1 ms**
 of delay on the PC. It takes screenshots and records the screen, and an iPad
 can also be a **second monitor** for the PC.
 
-> Everything stays between your PC and your iPhone. Nothing is uploaded, and
-> Mirrorly has no servers, accounts or telemetry.
+> Your screen, input, files and clipboard go only between your PC and your
+> iPhone. Mirrorly has no servers, accounts or telemetry. The one time it goes
+> online is to set up Apple's developer services on a phone: see
+> [Privacy](#privacy-and-security).
 
 ## Highlights
 
@@ -108,7 +110,9 @@ Get the latest version from **[Releases](../../releases/latest)**.
 > [!NOTE]
 > Mirrorly isn't code-signed yet, so Windows SmartScreen may warn the first
 > time. Choose **More info › Run anyway**, or check the file against
-> `SHA256SUMS.txt` first.
+> `SHA256SUMS.txt` first. On a PC with **Smart App Control** on, Windows blocks
+> it outright for now. Signing is being set up; see the
+> [code signing policy](#code-signing-policy).
 
 ### Requirements
 
@@ -405,9 +409,23 @@ results are in [**LATENCY.md**](LATENCY.md).
 
 ## Privacy and security
 
-- **Local only.** Video, input and files go directly between the PC and the
-  iPhone, over USB or your own network. There are no servers, accounts,
-  analytics or update checks.
+- **Between your devices.** Video, input, files and the clipboard go directly
+  between the PC and the iPhone, over USB or your own network. There are no
+  servers, accounts, analytics or update checks.
+- **Setting up a phone: the one time Mirrorly goes online.** iOS needs
+  Apple's Developer Disk Image on the phone before it offers screen sharing.
+  When it's missing (the first connection, and often after the phone
+  restarts), Mirrorly does what Xcode does:
+  - downloads the image's files from the
+    [DeveloperDiskImage](https://github.com/doronz88/DeveloperDiskImage)
+    repository on GitHub, once, into `%LOCALAPPDATA%\Mirrorly\ddi-cryptex`;
+  - asks Apple's signing server (`gs.apple.com`) to approve the image for
+    this phone. The request carries the phone's chip identifiers (including
+    its ECID) and a one-time number, like Xcode's, and is sent over HTTP.
+
+  Nothing else is sent: not your screen, files or anything about you. To
+  turn this off, start Mirrorly with `--no-auto-ddi`; a phone then works only
+  if the image is already on it.
 - **Apple's own services.** Mirrorly uses the developer services iOS provides
   for Xcode (screen, input, clipboard, files), and only after you tap *Trust*
   on the iPhone. Over Wi-Fi the connection is encrypted (TLS). Nothing on the
@@ -429,6 +447,7 @@ Developer Mode*, and so on.
 |---|---|
 | "Update to iOS 27" / "Update to iPadOS 27" | Mirrorly needs iOS or iPadOS 27: *Settings › General › Software Update*. |
 | "Apple Devices is required" | Install Apple Devices from the Microsoft Store, then plug the iPhone in again. |
+| "Smart App Control blocked an app" | Windows blocks unsigned apps it doesn't know yet, and Mirrorly isn't signed yet (see the [code signing policy](#code-signing-policy)). Smart App Control can't make an exception for one app: the only way for now is to turn it off (*Windows Security › App & browser control › Smart App Control*), which on many Windows versions can't be undone without resetting Windows. |
 | Stuck on "Trust this computer" | Unlock the iPhone, tap **Trust**, enter your passcode. |
 | Black screen / "iPhone is busy" | Close the Camera, or any app using the camera or microphone. |
 | Not found over Wi-Fi | Same network? Network profile **Private**? VPN off? Connect by USB once. |
@@ -603,6 +622,29 @@ system memory, for comparison). <kbd>F9</kbd> runs a latency probe:
   [**winit**](https://github.com/rust-windowing/winit) and
   [**windows-rs**](https://github.com/microsoft/windows-rs) for the window and
   Windows APIs.
+
+## Code signing policy
+
+Mirrorly's releases are being set up to be signed through the SignPath
+Foundation's free code signing for open-source projects:
+
+Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org).
+
+| Role | Who |
+|---|---|
+| Committers and reviewers | [AnasSAV](https://github.com/AnasSAV) |
+| Approvers | [AnasSAV](https://github.com/AnasSAV) |
+
+- **What is signed:** Mirrorly's own programs (`Mirrorly.exe` and the
+  installer), built by GitHub Actions from the source in this repository.
+- **How:** every release is signed only after an approver approves that
+  signing request by hand.
+- **What is not:** files from other projects are shipped unchanged, with
+  their own signatures or none. The FFmpeg libraries (BtbN's LGPL builds)
+  are unsigned; the Virtual Display Driver is signed by its own project.
+- **Privacy:** Mirrorly sends nothing to other computers except as described
+  under [Privacy and security](#privacy-and-security).
 
 ## License
 

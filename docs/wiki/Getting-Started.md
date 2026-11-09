@@ -24,7 +24,8 @@ Prefer not to install? **Mirrorly-x.y.z-portable.zip** runs from any folder.
 
 > Mirrorly isn't code-signed yet, so SmartScreen may warn the first time:
 > choose **More info › Run anyway**. `SHA256SUMS.txt` in the release lets you
-> check the download first.
+> check the download first. With **Smart App Control** on, Windows blocks it
+> outright for now: see [[Troubleshooting]].
 
 ## First connection
 
