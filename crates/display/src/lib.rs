@@ -106,6 +106,16 @@ impl Drop for DisplaySession {
     }
 }
 
+/// An address with its secret replaced, for logs and messages:
+/// `http://192.168.1.14:8765/k7m2x9qa` becomes `http://192.168.1.14:8765/…`.
+/// The secret is the only thing that keeps other devices on the network out.
+pub fn redacted(url: &str) -> String {
+    match url.rsplit_once('/') {
+        Some((head, _)) if head.contains("://") => format!("{head}/…"),
+        _ => url.to_string(),
+    }
+}
+
 /// This PC's LAN IPv4 addresses (what the iPad types or is sent to).
 fn local_ipv4() -> Vec<std::net::Ipv4Addr> {
     // The address the system would use to reach the LAN: no packet is sent.
