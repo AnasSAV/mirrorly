@@ -20,7 +20,10 @@
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none;
                -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
                font-family: -apple-system, system-ui, sans-serif; }
-  #screen { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: contain; }
+  /* The visible area, not 100vh: opened from the Home Screen, the page sits
+     below iPadOS's status bar, and 100vh (the whole screen) would push the
+     bottom of the picture off the screen. */
+  #screen { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; }
   /* The PC's pointer, over the video: painted pixels, and a layer whose
      white pixels invert what is below (the text I-beam). */
   .ptr { position: fixed; left: 0; top: 0; transform-origin: 0 0; pointer-events: none;
@@ -206,7 +209,7 @@ setInterval(() => {
 }, 1000);
 
 function begin() {
-  if (!('VideoDecoder' in window)) { document.getElementById('note').textContent = 'This Safari can’t decode video here (needs iPadOS 16.4 or later).'; return false; }
+  if (!('VideoDecoder' in window)) { document.getElementById('note').textContent = 'This browser can’t decode the video here. Try Safari (iPadOS 16.4 or later).'; return false; }
   cover.remove();
   connect();
   return true;

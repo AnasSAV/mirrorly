@@ -38,15 +38,18 @@ pub enum Control {
     Record,
     /// Stop that (the button on the display page).
     StopDisplay,
+    /// The settings menu (bar button).
+    Settings,
 }
 
 #[derive(Debug, Clone)]
 pub struct Toolbar {
     /// The whole bar; pressing its background drags the window.
     pub bar: Rect,
-    /// Traffic lights are circles: (centre x, centre y, radius).
+    /// The window buttons, on the right as in Windows (minimise, size,
+    /// close in the corner): circles, (centre x, centre y, radius).
     pub lights: [(Control, f64, f64, f64); 3],
-    /// Icon buttons, right-aligned (right to left): square hit boxes.
+    /// Icon buttons, left-aligned (left to right): square hit boxes.
     pub icons: Vec<(Control, Rect)>,
     /// The copied-on-iPhone chip, centred in the free middle of the bar.
     pub shelf: Option<Rect>,
@@ -71,30 +74,39 @@ pub fn toolbar(bar: Rect, scale: f64, shelf: bool, display: bool) -> Toolbar {
     let cy = bar.y + bar.h / 2.0;
     let r = 6.5 * scale;
     let step = 20.0 * scale;
-    let x0 = bar.x + 14.0 * scale + r;
+    let close_x = bar.x + bar.w - 14.0 * scale - r;
     let lights = [
-        (Control::Close, x0, cy, r),
-        (Control::Minimize, x0 + step, cy, r),
-        (Control::Zoom, x0 + 2.0 * step, cy, r),
+        (Control::Minimize, close_x - 2.0 * step, cy, r),
+        (Control::Zoom, close_x - step, cy, r),
+        (Control::Close, close_x, cy, r),
     ];
     let size = (28.0 * scale).min(bar.h);
     let gap = 4.0 * scale;
-    let right = bar.x + bar.w - 10.0 * scale;
-    let icon = |i: f64| Rect { x: right - (i + 1.0) * size - i * gap, y: cy - size / 2.0, w: size, h: size };
-    // Right to left, in order of need.
-    let wanted = [Control::Home, Control::AppSwitcher, Control::Rotate, Control::Power, Control::Screenshot, Control::Record, Control::Display];
-    let lights_end = x0 + 2.0 * step + r + 10.0 * scale;
+    let left = bar.x + 10.0 * scale;
+    let icon = |i: f64| Rect { x: left + i * (size + gap), y: cy - size / 2.0, w: size, h: size };
+    // Left to right, in order of need.
+    let wanted = [
+        Control::Home,
+        Control::AppSwitcher,
+        Control::Rotate,
+        Control::Power,
+        Control::Screenshot,
+        Control::Record,
+        Control::Display,
+        Control::Settings,
+    ];
+    let lights_start = close_x - 2.0 * step - r - 10.0 * scale;
     let icons: Vec<(Control, Rect)> = wanted
         .into_iter()
         .filter(|c| *c != Control::Display || display)
         .enumerate()
         .map(|(i, c)| (c, icon(i as f64)))
-        .take_while(|(_, rect)| rect.x >= lights_end)
+        .take_while(|(_, rect)| rect.x + rect.w <= lights_start)
         .collect();
-    let leftmost = icons.last().map(|i| i.1.x).unwrap_or(right);
+    let rightmost = icons.last().map(|i| i.1.x + i.1.w).unwrap_or(left);
     let shelf = shelf.then(|| {
-        let left = x0 + 2.0 * step + r + 12.0 * scale;
-        let right = leftmost - 10.0 * scale;
+        let left = rightmost + 10.0 * scale;
+        let right = close_x - 2.0 * step - r - 12.0 * scale;
         let w = (150.0 * scale).min(right - left);
         let h = (24.0 * scale).min(bar.h - 4.0 * scale);
         Rect { x: left + (right - left - w) / 2.0, y: cy - h / 2.0, w, h }
@@ -165,7 +177,8 @@ mod tests {
     #[test]
     fn controls_are_inside_the_bar_and_distinct() {
         let t = toolbar(bar(), 1.0, false, true);
-        assert_eq!(t.icons.last().map(|i| i.0), Some(Control::Display));
+        assert_eq!(t.icons.last().map(|i| i.0), Some(Control::Settings));
+        assert!(t.icons.iter().any(|i| i.0 == Control::Display));
         assert!(t.icons.iter().any(|i| i.0 == Control::Record) && t.icons.iter().any(|i| i.0 == Control::Screenshot));
         assert!(!toolbar(bar(), 1.0, false, false).icons.iter().any(|i| i.0 == Control::Display), "iPads only");
         for &(c, cx, cy, _) in &t.lights {
@@ -177,9 +190,16 @@ mod tests {
             assert!(inside(t.bar, cx, cy));
             assert_eq!(t.hit(cx, cy), Some(c));
         }
-        // Between the window buttons and the icons is plain background
+        // Window buttons on the right, in Windows' order; icons on the left.
+        let order: Vec<Control> = t.lights.iter().map(|l| l.0).collect();
+        assert_eq!(order, [Control::Minimize, Control::Zoom, Control::Close]);
+        assert!(t.lights[2].1 > t.lights[0].1 && t.lights[0].1 > t.bar.w / 2.0);
+        assert_eq!(t.icons[0].0, Control::Home, "the most needed nearest the edge");
+        assert!(t.icons[0].1.x < t.bar.w / 4.0);
+        // Between the icons and the window buttons is plain background
         // (the drag area).
-        let gap = (t.lights[2].1 + t.lights[2].3 + t.icons.last().unwrap().1.x) / 2.0;
+        let last = t.icons.last().unwrap().1;
+        let gap = (last.x + last.w + t.lights[0].1 - t.lights[0].3) / 2.0;
         assert_eq!(t.hit(gap, 18.0), None);
         assert!(inside(t.bar, gap, 18.0));
         assert!(!inside(t.bar, gap, 60.0));
@@ -191,16 +211,17 @@ mod tests {
         let have: Vec<Control> = t.icons.iter().map(|i| i.0).collect();
         assert_eq!(&have[..3], &[Control::Home, Control::AppSwitcher, Control::Rotate]);
         assert!(!have.contains(&Control::Display), "dropped first");
-        let lights_end = t.lights[2].1 + t.lights[2].3;
-        assert!(t.icons.iter().all(|(_, r)| r.x > lights_end), "never over the window buttons");
+        let lights_start = t.lights[0].1 - t.lights[0].3;
+        assert!(t.icons.iter().all(|(_, r)| r.x + r.w < lights_start), "never over the window buttons");
     }
 
     #[test]
     fn shelf_sits_between_lights_and_icons() {
         let t = toolbar(bar(), 1.0, true, true);
         let s = t.shelf.expect("room for the shelf");
-        assert!(s.x > t.lights[2].1 + t.lights[2].3);
-        assert!(s.x + s.w < t.icons.last().unwrap().1.x);
+        let last = t.icons.last().unwrap().1;
+        assert!(s.x > last.x + last.w);
+        assert!(s.x + s.w < t.lights[0].1 - t.lights[0].3);
         assert_eq!(t.hit(s.x + s.w / 2.0, s.y + s.h / 2.0), Some(Control::Shelf));
         // A narrow window has no room: no chip rather than an overlap.
         assert!(toolbar(Rect { w: 230.0, ..bar() }, 1.0, true, false).shelf.is_none());

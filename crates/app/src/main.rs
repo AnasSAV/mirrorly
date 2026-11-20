@@ -42,6 +42,7 @@ mod sink;
 mod state;
 mod status;
 mod theme;
+mod settings;
 mod tray;
 mod ui;
 mod winclip;
@@ -235,6 +236,10 @@ struct App {
     scroll_pending: f64,
     /// Fetched from the iPhone's clipboard, offered on the bar's chip.
     shelf_files: Vec<std::path::PathBuf>,
+    /// The apps on the connected phone that can keep documents, once it
+    /// has said; and whether the settings menu is waiting for that.
+    doc_apps: Option<Vec<device::docs::Host>>,
+    settings_waiting: bool,
     /// Files dropped on the window, sent together once the drop is over.
     dropped: Vec<std::path::PathBuf>,
     toast_until: Option<Instant>,
@@ -483,6 +488,7 @@ impl App {
             Control::Screenshot => self.screenshot(),
             Control::Record => self.toggle_recording(),
             Control::StopDisplay => self.stop_display(),
+            Control::Settings => self.settings(),
             Control::Power => {
                 let on = self.shared.chrome.lock().unwrap().disconnected;
                 self.set_connected(on);
@@ -645,6 +651,48 @@ impl App {
             }
             ctx.Unmap(&staging, 0);
             Ok(record::Nv12 { data, width: w, height: h })
+        }
+    }
+
+    /// The settings menu. The phone is asked again which apps can keep
+    /// documents (one may have been installed); the menu shows what is known
+    /// now, or waits for the first answer.
+    fn settings(&mut self) {
+        match (&self.device, self.link) {
+            (Some(d), Some(_)) => {
+                d.document_apps();
+                if self.doc_apps.is_some() {
+                    self.show_settings();
+                } else {
+                    self.settings_waiting = true;
+                }
+            }
+            _ => self.show_settings(),
+        }
+    }
+
+    fn show_settings(&mut self) {
+        let apps = self.link.and(self.doc_apps.as_deref());
+        let chosen = device::docs::chosen();
+        let Some(choice) = settings::show(self.hwnd, apps, chosen.as_deref()) else {
+            return;
+        };
+        let (saved, place) = match &choice {
+            settings::Choice::Automatic => {
+                (device::docs::choose(None), apps.and_then(|a| device::docs::pick(a, None)).map(|h| h.place()))
+            }
+            settings::Choice::App(h) => (device::docs::choose(Some(&h.bundle_id)), Some(h.place())),
+        };
+        match (saved, place) {
+            (Err(e), _) => {
+                tracing::warn!("couldn't save the documents choice: {e:#}");
+                self.toast("Couldn't save that choice", 3.0);
+            }
+            (Ok(()), Some(place)) => {
+                tracing::info!("documents now go to {place}");
+                self.toast(format!("Documents now go to {place}"), 4.0);
+            }
+            (Ok(()), None) => {}
         }
     }
 
@@ -983,6 +1031,12 @@ impl App {
                 };
                 self.toast(text, if saved > 0 { 6.0 } else { 3.0 });
             }
+            ClipEvent::DocApps(apps) => {
+                self.doc_apps = Some(apps);
+                if std::mem::take(&mut self.settings_waiting) {
+                    self.show_settings();
+                }
+            }
             ClipEvent::UrlOpened(Ok(())) => tracing::info!("iPad display: the address is in Safari"),
             ClipEvent::UrlOpened(Err(e)) => {
                 tracing::warn!("iPad display: opening Safari failed: {e}");
@@ -1173,6 +1227,10 @@ impl App {
                     Some(c) => self.control(el, c),
                     None => drag_window(self.hwnd),
                 }
+            }
+            bar::BarInput::Menu(x, y) => {
+                self.bar_cursor = Some((x, y));
+                self.settings();
             }
         }
         self.update_hover();
@@ -1395,12 +1453,18 @@ impl ApplicationHandler<UserEvent> for App {
                 if self.win_copy_at > self.phone_copy_at {
                     self.send_windows_clipboard(false);
                 }
+                // Ready for the settings menu.
+                if let Some(d) = &self.device {
+                    d.document_apps();
+                }
             }
             DeviceEvent::Disconnected(_) => {
                 // The stream ended: finish the recording with what it has.
                 self.stop_recording();
                 *self.shared.transport.lock().unwrap() = None;
                 self.link = None;
+                self.doc_apps = None;
+                self.settings_waiting = false;
                 self.gesture = Gesture::default();
                 self.keys_down.clear();
                 self.set_title();
@@ -1819,6 +1883,8 @@ fn main() -> Result<()> {
         scroll_busy_until: Instant::now(),
         scroll_pending: 0.0,
         shelf_files: Vec::new(),
+        doc_apps: None,
+        settings_waiting: false,
         dropped: Vec::new(),
         toast_until: None,
         clip_sent: 0,

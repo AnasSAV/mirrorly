@@ -55,7 +55,7 @@ use windows::{
                 IDC_ARROW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos, WINDOWPOS,
                 WM_WINDOWPOSCHANGED,
                 LoadCursorW, MA_NOACTIVATE, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SetCursor, SetWindowLongPtrW,
-                ShowWindow, ULW_ALPHA, UpdateLayeredWindow, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE,
+                ShowWindow, ULW_ALPHA, UpdateLayeredWindow, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_RBUTTONUP,
                 WM_SETCURSOR, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
             },
         },
@@ -87,6 +87,8 @@ pub enum BarInput {
     Move(f64, f64),
     Leave,
     Down(f64, f64),
+    /// Right button released: the settings menu.
+    Menu(f64, f64),
 }
 
 /// What the bar shows; it is redrawn when this changes.
@@ -173,6 +175,7 @@ const GLYPH_DISPLAY: &str = "\u{E7F4}";
 const GLYPH_SCREENSHOT: &str = "\u{E722}";
 const GLYPH_RECORD: &str = "\u{E7C8}";
 const GLYPH_STOP: &str = "\u{E71A}";
+const GLYPH_SETTINGS: &str = "\u{E713}";
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> D2D1_COLOR_F {
     D2D1_COLOR_F { r, g, b, a }
@@ -215,6 +218,11 @@ unsafe extern "system" fn bar_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             WM_LBUTTONDOWN if !p.is_null() => {
                 let (x, y) = xy();
                 ((*p).on_input)(BarInput::Down(x, y));
+                return LRESULT(0);
+            }
+            WM_RBUTTONUP if !p.is_null() => {
+                let (x, y) = xy();
+                ((*p).on_input)(BarInput::Menu(x, y));
                 return LRESULT(0);
             }
             _ => {}
@@ -512,6 +520,7 @@ impl Bar {
                     Control::Screenshot => GLYPH_SCREENSHOT,
                     Control::Record if st.recording => GLYPH_STOP,
                     Control::Record => GLYPH_RECORD,
+                    Control::Settings => GLYPH_SETTINGS,
                     _ => GLYPH_ROTATE,
                 };
                 let f = self.fonts.icons.clone();
