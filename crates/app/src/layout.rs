@@ -96,12 +96,16 @@ pub fn toolbar(bar: Rect, scale: f64, shelf: bool, display: bool) -> Toolbar {
         Control::Settings,
     ];
     let lights_start = close_x - 2.0 * step - r - 10.0 * scale;
+    // Something copied on the phone comes first: it can only be dragged from
+    // the chip, so the least needed buttons make room for it (the settings
+    // are also on a right-click of the bar).
+    let reserve = if shelf { SHELF_MIN * scale + 20.0 * scale } else { 0.0 };
     let icons: Vec<(Control, Rect)> = wanted
         .into_iter()
         .filter(|c| *c != Control::Display || display)
         .enumerate()
         .map(|(i, c)| (c, icon(i as f64)))
-        .take_while(|(_, rect)| rect.x + rect.w <= lights_start)
+        .take_while(|(_, rect)| rect.x + rect.w <= lights_start - reserve)
         .collect();
     let rightmost = icons.last().map(|i| i.1.x + i.1.w).unwrap_or(left);
     let shelf = shelf.then(|| {
@@ -114,6 +118,9 @@ pub fn toolbar(bar: Rect, scale: f64, shelf: bool, display: bool) -> Toolbar {
     let shelf = shelf.filter(|r| r.w >= 60.0 * scale);
     Toolbar { bar, lights, icons, shelf }
 }
+
+/// Width the copied-on-iPhone chip gets before buttons, logical px.
+const SHELF_MIN: f64 = 96.0;
 
 impl Toolbar {
     /// Which control is under (x, y), if any. Light hit areas are a bit
@@ -223,8 +230,24 @@ mod tests {
         assert!(s.x > last.x + last.w);
         assert!(s.x + s.w < t.lights[0].1 - t.lights[0].3);
         assert_eq!(t.hit(s.x + s.w / 2.0, s.y + s.h / 2.0), Some(Control::Shelf));
-        // A narrow window has no room: no chip rather than an overlap.
-        assert!(toolbar(Rect { w: 230.0, ..bar() }, 1.0, true, false).shelf.is_none());
+        // A tiny bar has no room: no chip rather than an overlap.
+        assert!(toolbar(Rect { w: 140.0, ..bar() }, 1.0, true, false).shelf.is_none());
+    }
+
+    #[test]
+    fn a_narrow_bar_drops_buttons_to_show_the_chip() {
+        // An iPhone-sized window: without a chip the buttons fill the bar,
+        // with one the least needed make room, and Home stays.
+        let narrow = Rect { w: 300.0, ..bar() };
+        assert!(toolbar(narrow, 1.0, false, false).icons.len() > toolbar(narrow, 1.0, true, false).icons.len());
+        let t = toolbar(narrow, 1.0, true, false);
+        let s = t.shelf.expect("the chip is shown");
+        assert!(s.w >= SHELF_MIN);
+        assert_eq!(t.icons[0].0, Control::Home);
+        let last = t.icons.last().unwrap().1;
+        assert!(last.x + last.w < s.x && s.x + s.w < t.lights[0].1 - t.lights[0].3);
+        // Scaled for DPI the same way.
+        assert!(toolbar(Rect { w: 600.0, h: 2.0 * BAR_HEIGHT, ..bar() }, 2.0, true, false).shelf.is_some());
     }
 
     #[test]
