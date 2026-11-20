@@ -67,9 +67,10 @@ can also be a **second monitor** for the PC.
       again and it's back on USB in about a second.
     </td>
     <td valign="top">
-      <h3>🪟 Looks like a Mac</h3>
-      Just the phone screen in a rounded window. A bar above it holds the
-      buttons and never covers Control Center. Light or dark, following Windows.
+      <h3>🪟 Just the screen</h3>
+      The phone screen in a rounded window. A bar above it holds the buttons
+      (window buttons on the right, as in Windows) and never covers Control
+      Center. Light or dark, following Windows.
     </td>
     <td valign="top">
       <h3>🧭 Guided setup</h3>
@@ -168,7 +169,8 @@ flowchart LR
 | **Drag up from the very bottom edge** | Go Home (pause before letting go for the App Switcher); works in landscape too |
 | **Drag down from the top edge** | Notification Center (left) or Control Center (right) |
 | **Right-click** | Go Home |
-| **Point at the window** | Show the bar: window buttons, copied files, Disconnect, Screenshot, Record, Rotate, App Switcher, Home |
+| **Point at the window** | Show the bar: Home, App Switcher, Rotate, Disconnect, Screenshot, Record and the settings gear on the left, copied files in the middle, window buttons on the right |
+| **Right-click the bar** | Settings (also the gear on the bar) |
 | **Drag the bar** | Move the window |
 | **Ctrl + wheel** or the **green button** | Make the window bigger or smaller |
 
@@ -244,8 +246,10 @@ Drag files from Explorer and **drop them on the mirrored screen**.
 > [!TIP]
 > iOS doesn't let other programs write to the top level of *On My iPhone*, so
 > documents go into a **Mirrorly** folder inside the Files folder of an app
-> that shares files (VLC or Chrome, for example). In Files, touch and hold that
-> folder and choose **Favorite**: it then shows in the sidebar as **Mirrorly**.
+> that shares files. Choose which app with the **gear** on the bar (or a
+> right-click on it); *Automatic* picks VLC or Chrome when installed. In
+> Files, touch and hold that folder and choose **Favorite**: it then shows in
+> the sidebar as **Mirrorly**.
 
 <details>
 <summary><b>Limits and details</b></summary>
