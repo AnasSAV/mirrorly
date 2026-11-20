@@ -32,8 +32,10 @@ Drag files from Explorer and drop them on the mirrored screen.
 
 iOS doesn't let other programs write to the top level of *On My iPhone*, so
 documents go into a **Mirrorly** folder inside an app that shares files with
-the PC (VLC or Chrome, for example). In Files, touch and hold that folder and
-choose **Favorite** to find it in the sidebar.
+the PC. Choose which app with the **gear** on the bar (or a right-click on
+the bar): it lists the apps on the phone that can keep files, and
+*Automatic* picks VLC or Chrome when installed. In Files, touch and hold
+that folder and choose **Favorite** to find it in the sidebar.
 
 Up to 200 MB per drop. Folders aren't sent; drop the files in them.
 

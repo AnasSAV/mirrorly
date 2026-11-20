@@ -67,9 +67,10 @@ can also be a **second monitor** for the PC.
       again and it's back on USB in about a second.
     </td>
     <td valign="top">
-      <h3>🪟 Looks like a Mac</h3>
-      Just the phone screen in a rounded window. A bar above it holds the
-      buttons and never covers Control Center. Light or dark, following Windows.
+      <h3>🪟 Just the screen</h3>
+      The phone screen in a rounded window. A bar above it holds the buttons
+      (window buttons on the right, as in Windows) and never covers Control
+      Center. Light or dark, following Windows.
     </td>
     <td valign="top">
       <h3>🧭 Guided setup</h3>
@@ -168,7 +169,8 @@ flowchart LR
 | **Drag up from the very bottom edge** | Go Home (pause before letting go for the App Switcher); works in landscape too |
 | **Drag down from the top edge** | Notification Center (left) or Control Center (right) |
 | **Right-click** | Go Home |
-| **Point at the window** | Show the bar: window buttons, copied files, Disconnect, Screenshot, Record, Rotate, App Switcher, Home |
+| **Point at the window** | Show the bar: Home, App Switcher, Rotate, Disconnect, Screenshot, Record and the settings gear on the left, copied files in the middle, window buttons on the right |
+| **Right-click the bar** | Settings (also the gear on the bar) |
 | **Drag the bar** | Move the window |
 | **Ctrl + wheel** or the **green button** | Make the window bigger or smaller |
 
@@ -244,8 +246,10 @@ Drag files from Explorer and **drop them on the mirrored screen**.
 > [!TIP]
 > iOS doesn't let other programs write to the top level of *On My iPhone*, so
 > documents go into a **Mirrorly** folder inside the Files folder of an app
-> that shares files (VLC or Chrome, for example). In Files, touch and hold that
-> folder and choose **Favorite**: it then shows in the sidebar as **Mirrorly**.
+> that shares files. Choose which app with the **gear** on the bar (or a
+> right-click on it); *Automatic* picks VLC or Chrome when installed. In
+> Files, touch and hold that folder and choose **Favorite**: it then shows in
+> the sidebar as **Mirrorly**.
 
 <details>
 <summary><b>Limits and details</b></summary>
@@ -370,6 +374,12 @@ After the first USB connection, **unplug the cable**: Mirrorly finds the iPhone
 on your network and carries on over Wi-Fi. Plug it back in and it switches to
 USB by itself.
 
+> [!NOTE]
+> Wi-Fi pairings made before Mirrorly 2.0 don't hold the key Mirrorly now
+> checks the iPhone with. Such an iPhone connects by USB as usual, and its
+> Wi-Fi pairing is renewed then; until you plug it in once, it isn't used
+> over Wi-Fi.
+
 | | 🔌 USB | 📶 Wi-Fi |
 |---|---|---|
 | Tap → on screen (median) | **87.5 ms** | 96.3 ms |
@@ -434,8 +444,10 @@ results are in [**LATENCY.md**](LATENCY.md).
   if the image is already on it.
 - **Apple's own services.** Mirrorly uses the developer services iOS provides
   for Xcode (screen, input, clipboard, files), and only after you tap *Trust*
-  on the iPhone. Over Wi-Fi the connection is encrypted (TLS). Nothing on the
-  iPhone is modified or jailbroken.
+  on the iPhone. Over Wi-Fi the connection is encrypted (TLS), and the
+  iPhone has to prove it is the one paired with this PC (it signs with the
+  key it gave when paired over USB), so nothing else on the network can
+  stand in for it. Nothing on the iPhone is modified or jailbroken.
 - **Your clipboard.** Copies go only between your PC and your iPhone, while
   connected. Content a password manager marks as private on the PC is never
   sent, and iPhone text is kept out of Windows' clipboard history.
@@ -619,7 +631,9 @@ system memory, for comparison). <kbd>F9</kbd> runs a latency probe:
 ### Built on
 
 - [**idevice**](https://github.com/jkcoxson/idevice): the Rust implementation
-  of Apple's device protocols that Mirrorly is built on.
+  of Apple's device protocols that Mirrorly is built on (with one change, in
+  [`vendor/idevice`](vendor/idevice/MIRRORLY.md): Wi-Fi pair-verify checks
+  the iPhone's signature).
 - [**pymobiledevice3**](https://github.com/doronz88/pymobiledevice3): reference
   for the CoreDevice services; its Developer Disk Image repository provides
   the signed images.

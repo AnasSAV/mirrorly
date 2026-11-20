@@ -16,7 +16,13 @@
 //! a root-enumerated device is created, and the driver is installed on it.
 
 use std::{
-    os::windows::process::CommandExt,
+    fs::OpenOptions,
+    io::Write,
+    os::windows::{
+        fs::OpenOptionsExt,
+        io::{FromRawHandle, OwnedHandle},
+        process::CommandExt,
+    },
     path::{Path, PathBuf},
     process::Command,
     time::{Duration, Instant},
@@ -33,7 +39,21 @@ use windows::{
             SetupDiSetClassInstallParamsW, SetupDiSetDeviceRegistryPropertyW, UpdateDriverForPlugAndPlayDevicesW,
         },
         Graphics::Dxgi::{CreateDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE, IDXGIFactory1},
-        Foundation::{CloseHandle, ERROR_CANCELLED, WAIT_OBJECT_0},
+        Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, ERROR_CANCELLED, HANDLE, HLOCAL, LocalFree, WAIT_OBJECT_0},
+        Security::{
+            ACL, Authorization::{
+                ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo, SDDL_REVISION_1, SE_FILE_OBJECT,
+                SetSecurityInfo,
+            },
+            DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, IsWellKnownSid, OWNER_SECURITY_INFORMATION,
+            PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, WinBuiltinAdministratorsSid,
+            WinLocalSystemSid,
+        },
+        Storage::FileSystem::{
+            BY_HANDLE_FILE_INFORMATION, CreateDirectoryW, CreateFileW, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
+            GetFileInformationByHandle, OPEN_EXISTING, READ_CONTROL, WRITE_DAC,
+        },
         System::Threading::{GetExitCodeProcess, INFINITE, WaitForSingleObject},
         UI::{
             Shell::{SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW},
@@ -226,13 +246,113 @@ fn settings_xml(prefer: Option<(u32, u32)>, gpu: &str) -> String {
 }
 
 /// One monitor, offering the iPad's resolution, on `gpu` (read by the
-/// driver when it starts).
+/// driver when it starts). Runs elevated, into a folder at the root of C:,
+/// where any user may create folders: see `secure_dir`.
 fn write_settings(prefer: Option<(u32, u32)>, gpu: &str) -> Result<()> {
-    std::fs::create_dir_all(SETTINGS_DIR).with_context(|| format!("create {SETTINGS_DIR}"))?;
+    // Held open (no sharing for delete) until the file is written, so the
+    // folder can't be renamed or swapped for a link meanwhile.
+    let _dir = secure_dir(Path::new(SETTINGS_DIR))?;
     let file = Path::new(SETTINGS_DIR).join("vdd_settings.xml");
-    std::fs::write(&file, settings_xml(prefer, gpu)).with_context(|| format!("write {}", file.display()))?;
+    match std::fs::remove_file(&file) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            return Err(e).with_context(|| format!("remove {}", file.display()));
+        }
+        _ => {}
+    }
+    // A new file, never through a link (the old name is gone: anything
+    // there now was made in the window above, which the DACL closes).
+    let mut f = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0)
+        .open(&file)
+        .with_context(|| format!("create {}", file.display()))?;
+    f.write_all(settings_xml(prefer, gpu).as_bytes()).with_context(|| format!("write {}", file.display()))?;
     tracing::info!("wrote {} (GPU: {gpu})", file.display());
     Ok(())
+}
+
+/// Administrators and SYSTEM change it; everyone else (the driver's host
+/// runs as LOCAL SERVICE) may only read. Not inherited from C:\, where
+/// every user may add and change folders.
+const SETTINGS_DIR_SDDL: &str = "D:P(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)(A;OICI;0x1200a9;;;AU)(A;OICI;0x1200a9;;;LS)";
+
+/// Make `dir` a folder that only administrators and SYSTEM can change, and
+/// return a handle that keeps it in place. A new folder is created with
+/// that DACL; an existing one is accepted only if it is a real folder (not
+/// a junction or link to somewhere else) owned by Administrators or SYSTEM,
+/// and gets that DACL. One made by another account is refused, as someone
+/// may have prepared it to redirect this elevated write.
+fn secure_dir(dir: &Path) -> Result<OwnedHandle> {
+    let wide = HSTRING::from(dir.as_os_str());
+    unsafe {
+        let mut sd = PSECURITY_DESCRIPTOR::default();
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(&HSTRING::from(SETTINGS_DIR_SDDL), SDDL_REVISION_1, &mut sd, None)
+            .context("settings folder security descriptor")?;
+        let result = (|| {
+            let sa = SECURITY_ATTRIBUTES {
+                nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+                lpSecurityDescriptor: sd.0,
+                bInheritHandle: false.into(),
+            };
+            if let Err(e) = CreateDirectoryW(&wide, Some(&sa))
+                && e.code() != ERROR_ALREADY_EXISTS.to_hresult()
+            {
+                return Err(e).with_context(|| format!("create {}", dir.display()));
+            }
+            let h = CreateFileW(
+                &wide,
+                (READ_CONTROL | WRITE_DAC).0 | FILE_READ_ATTRIBUTES.0,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                None,
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                None,
+            )
+            .with_context(|| format!("open {}", dir.display()))?;
+            let handle = OwnedHandle::from_raw_handle(h.0);
+            let mut info = BY_HANDLE_FILE_INFORMATION::default();
+            GetFileInformationByHandle(h, &mut info).context("settings folder attributes")?;
+            if info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT.0 != 0 || info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY.0 == 0 {
+                bail!("{} is a link or not a folder: delete it, then try again", dir.display());
+            }
+            if !owned_by_admins(h)? {
+                bail!("{} belongs to another account: delete it, then try again", dir.display());
+            }
+            let mut present = BOOL::default();
+            let mut dacl: *mut ACL = std::ptr::null_mut();
+            let mut defaulted = BOOL::default();
+            GetSecurityDescriptorDacl(sd, &mut present, &mut dacl, &mut defaulted).context("settings folder DACL")?;
+            SetSecurityInfo(
+                h,
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                None,
+                None,
+                Some(dacl),
+                None,
+            )
+            .ok()
+            .with_context(|| format!("set the permissions of {}", dir.display()))?;
+            Ok(handle)
+        })();
+        let _ = LocalFree(Some(HLOCAL(sd.0)));
+        result
+    }
+}
+
+/// Whether Administrators or SYSTEM own the object behind `h`.
+fn owned_by_admins(h: HANDLE) -> Result<bool> {
+    unsafe {
+        let mut owner = PSID::default();
+        let mut sd = PSECURITY_DESCRIPTOR::default();
+        GetSecurityInfo(h, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, Some(&mut owner), None, None, None, Some(&mut sd))
+            .ok()
+            .context("settings folder owner")?;
+        let ok = IsWellKnownSid(owner, WinBuiltinAdministratorsSid).as_bool() || IsWellKnownSid(owner, WinLocalSystemSid).as_bool();
+        let _ = LocalFree(Some(HLOCAL(sd.0)));
+        Ok(ok)
+    }
 }
 
 /// Restart the driver's device(s), as `devcon restart Root\MttVDD` does.
@@ -281,8 +401,13 @@ fn restart_driver() -> Result<()> {
 }
 
 /// Run a system tool; its output goes to the log.
+/// Run a Windows tool from System32 by its full path: by bare name, Windows
+/// would look in Mirrorly's own folder first, which in a per-user install
+/// any process of the user can write to, and this runs elevated.
 fn run(program: &str, raw_args: &str) -> Result<i32> {
-    let out = Command::new(program).raw_arg(raw_args).creation_flags(0x0800_0000).output().with_context(|| format!("run {program}"))?;
+    let root = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let path = root.join("System32").join(program);
+    let out = Command::new(&path).raw_arg(raw_args).creation_flags(0x0800_0000).output().with_context(|| format!("run {program}"))?;
     let code = out.status.code().unwrap_or(-1);
     tracing::info!("{program} {raw_args} -> {code}\n{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
     Ok(code)
@@ -338,6 +463,32 @@ fn firewall() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Not elevated, a folder is owned by the user who made it: exactly
+    /// what the elevated setup must refuse, like a junction planted where
+    /// the folder should be. Elevated (as on CI), the folder it makes is the
+    /// administrators' and is kept.
+    #[test]
+    fn the_settings_folder_must_be_an_admin_owned_real_folder() {
+        use std::os::windows::io::AsRawHandle;
+        let base = std::env::temp_dir().join(format!("mirrorly-secure-dir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let made_here = base.join("made-here");
+        match secure_dir(&made_here) {
+            Ok(h) => assert!(owned_by_admins(HANDLE(h.as_raw_handle())).unwrap(), "elevated: owned by Administrators"),
+            Err(e) => assert!(e.to_string().contains("belongs to another account"), "{e}"),
+        }
+        let target = base.join("elsewhere");
+        std::fs::create_dir(&target).unwrap();
+        let link = base.join("junction");
+        let made = Command::new("cmd").args(["/c", "mklink", "/J"]).arg(&link).arg(&target).output().unwrap();
+        assert!(made.status.success(), "mklink /J");
+        let err = secure_dir(&link).unwrap_err().to_string();
+        assert!(err.contains("is a link"), "{err}");
+        let _ = std::fs::remove_dir(&link);
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn settings_list_the_ipad_first_once() {

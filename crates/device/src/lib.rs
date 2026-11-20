@@ -2,6 +2,7 @@
 //! Developer Disk Image, displayservice media session, RTCP feedback, HID
 //! execution, and reconnect. Everything runs on one dedicated network thread.
 
+pub mod amds;
 pub mod clipboard;
 pub mod conn;
 pub mod docs;

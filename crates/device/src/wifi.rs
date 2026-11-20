@@ -63,8 +63,16 @@ pub struct Paired {
     pub info: DeviceInfo,
 }
 
+/// Whether there is a Wi-Fi pairing for `udid` that can verify the phone:
+/// one made since Mirrorly keeps the phone's key. An older one is made again
+/// the next time the phone is on USB.
 pub fn has_record(udid: &str) -> bool {
-    record_path(udid).exists()
+    std::fs::read(record_path(udid)).ok().and_then(|b| RpPairingFile::from_bytes(&b).ok()).is_some_and(|r| verifiable(&r))
+}
+
+/// A record that holds the phone's identity from pair-setup.
+fn verifiable(r: &RpPairingFile) -> bool {
+    r.device_public_key.is_some() && r.device_identifier.is_some()
 }
 
 /// Every device with a stored pairing record.
@@ -78,6 +86,10 @@ pub async fn load_paired() -> Vec<Paired> {
         }
         let Some(udid) = path.file_stem().and_then(|s| s.to_str()).map(str::to_string) else { continue };
         let Ok(record) = RpPairingFile::read_from_file(&path).await else { continue };
+        if !verifiable(&record) {
+            tracing::info!("Wi-Fi pairing for {udid} predates phone verification: plug it in once to renew it");
+            continue;
+        }
         let Some(info) = read_info(&udid) else { continue };
         out.push(Paired { record, info });
     }
@@ -208,10 +220,19 @@ pub async fn open_tunnel(ip: IpAddr, port: u16, record: &mut RpPairingFile) -> R
     let stream: Box<dyn ReadWrite> = Box::new(tcp(SocketAddr::new(ip, port)).await?);
     let mut client = RemotePairingClient::new(RpPairingSocket::new(stream), &hostname());
     client.attempt_pair_verify().await.context("RemotePairing handshake")?;
-    client
-        .validate_pairing(record)
-        .await
-        .context("pair-verify failed: the phone no longer accepts this PC's Wi-Fi pairing; plug in USB once to re-pair")?;
+    if let Err(e) = client.validate_pairing(record).await {
+        if matches!(e, idevice::IdeviceError::RemotePairing(idevice::remote_pairing::errors::RemotePairingError::DeviceNotVerified)) {
+            bail!("the device at {ip} answered for your iPhone but could not prove it is: not connecting");
+        }
+        return Err(anyhow::Error::new(e)
+            .context("pair-verify failed: the phone no longer accepts this PC's Wi-Fi pairing; plug in USB once to re-pair"));
+    }
+    // The phone signed this exchange with its key from pairing: it is the
+    // paired phone, not something on the network answering in its name.
+    if client.device_verified() != Some(true) {
+        bail!("the device at {ip} could not prove it is your iPhone: not connecting");
+    }
+    tracing::info!("Wi-Fi: the phone proved its identity");
     timings.push(("pair-verify over Wi-Fi", ms(t)));
 
     let t = Instant::now();

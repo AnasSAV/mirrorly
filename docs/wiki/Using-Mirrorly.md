@@ -26,9 +26,13 @@ reachable.
 | Power | Disconnect, or connect again |
 | Rotate | Turn the view for landscape apps |
 | App Switcher, Home | As the phone's own gestures |
+| Gear | Settings: which app on the phone keeps the documents you drop (also on a right-click of the bar) |
 
-Drag the bar's empty space to move the window. On a small window the bar
-leaves out the buttons it has no room for.
+The tools sit on the left, with Home nearest the edge, and the window
+buttons on the right, as in Windows. Drag the bar's empty space to move the
+window. On a small window the bar leaves out the buttons it has no room for,
+least needed first, and makes room for the copied-files chip when there is
+one.
 
 Mirrorly is light or dark to match Windows (*Settings › Personalization ›
 Colors › Choose your mode*, the app mode), and changes as soon as Windows does.
