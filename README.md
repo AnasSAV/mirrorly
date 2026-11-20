@@ -370,6 +370,12 @@ After the first USB connection, **unplug the cable**: Mirrorly finds the iPhone
 on your network and carries on over Wi-Fi. Plug it back in and it switches to
 USB by itself.
 
+> [!NOTE]
+> Wi-Fi pairings made before Mirrorly 2.0 don't hold the key Mirrorly now
+> checks the iPhone with. Such an iPhone connects by USB as usual, and its
+> Wi-Fi pairing is renewed then; until you plug it in once, it isn't used
+> over Wi-Fi.
+
 | | 🔌 USB | 📶 Wi-Fi |
 |---|---|---|
 | Tap → on screen (median) | **87.5 ms** | 96.3 ms |
@@ -434,8 +440,10 @@ results are in [**LATENCY.md**](LATENCY.md).
   if the image is already on it.
 - **Apple's own services.** Mirrorly uses the developer services iOS provides
   for Xcode (screen, input, clipboard, files), and only after you tap *Trust*
-  on the iPhone. Over Wi-Fi the connection is encrypted (TLS). Nothing on the
-  iPhone is modified or jailbroken.
+  on the iPhone. Over Wi-Fi the connection is encrypted (TLS), and the
+  iPhone has to prove it is the one paired with this PC (it signs with the
+  key it gave when paired over USB), so nothing else on the network can
+  stand in for it. Nothing on the iPhone is modified or jailbroken.
 - **Your clipboard.** Copies go only between your PC and your iPhone, while
   connected. Content a password manager marks as private on the PC is never
   sent, and iPhone text is kept out of Windows' clipboard history.
@@ -619,7 +627,9 @@ system memory, for comparison). <kbd>F9</kbd> runs a latency probe:
 ### Built on
 
 - [**idevice**](https://github.com/jkcoxson/idevice): the Rust implementation
-  of Apple's device protocols that Mirrorly is built on.
+  of Apple's device protocols that Mirrorly is built on (with one change, in
+  [`vendor/idevice`](vendor/idevice/MIRRORLY.md): Wi-Fi pair-verify checks
+  the iPhone's signature).
 - [**pymobiledevice3**](https://github.com/doronz88/pymobiledevice3): reference
   for the CoreDevice services; its Developer Disk Image repository provides
   the signed images.

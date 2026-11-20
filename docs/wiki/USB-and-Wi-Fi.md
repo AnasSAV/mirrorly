@@ -30,5 +30,12 @@ encoding); Mirrorly's own share is about 1 ms. Measurements and method:
 An amber or red light at the top of the screen means the Wi-Fi link is
 struggling.
 
-Over Wi-Fi the connection is encrypted (TLS with a key from the pairing). To
-remove an iPhone's Wi-Fi pairing, disconnect and click **Forget** next to it.
+Over Wi-Fi the connection is encrypted (TLS with a key from the pairing),
+and the iPhone has to prove it is the one paired with this PC: it signs
+with the key it gave when it was paired over USB, so another device on the
+network can't stand in for it. Wi-Fi pairings made before Mirrorly 2.0
+don't hold that key; such an iPhone renews its pairing the next time it is
+plugged in, and isn't used over Wi-Fi until then.
+
+To remove an iPhone's Wi-Fi pairing, disconnect and click **Forget** next
+to it.

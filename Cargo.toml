@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "spike", "spike-decode"]
+exclude = ["vendor/idevice"]
 default-members = ["crates/app"]
 
 [workspace.package]
@@ -86,3 +87,8 @@ display = { path = "crates/display" }
 
 [profile.release]
 debug = 1
+
+# idevice 0.1.68 with Mirrorly's changes to RemotePairing (the phone's
+# identity during Wi-Fi pair-verify): see vendor/idevice/MIRRORLY.md.
+[patch.crates-io]
+idevice = { path = "vendor/idevice" }
