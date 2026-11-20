@@ -72,6 +72,11 @@ windows = { version = "=0.62.2", features = [
   "Win32_System_Com_StructuredStorage",
   "Win32_System_Registry",
   "Win32_Devices_DeviceAndDriverInstallation",
+  "Win32_Security_Authorization",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Services",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_Networking_WinSock",
 ] }
 
 input = { path = "crates/input" }
