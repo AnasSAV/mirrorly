@@ -585,7 +585,7 @@ impl Bridge {
                     ClipCmd::OpenUrl(url) => {
                         let r = self.open_url(&url).await.map_err(|e| format!("{e:#}"));
                         if let Err(e) = &r {
-                            tracing::warn!("opening {url} in Safari failed: {e}");
+                            tracing::warn!("opening the display address in Safari failed: {e}");
                         }
                         (self.on_event)(ClipEvent::UrlOpened(r));
                     }
@@ -787,7 +787,7 @@ impl Bridge {
         self.keys(&[(GUI, true), (0x19, true), (0x19, false), (GUI, false)]); // Command-V
         tokio::time::sleep(Duration::from_millis(300)).await;
         self.keys(&[(0x28, true), (0x28, false)]); // Return
-        tracing::info!("opened {url} in Safari");
+        tracing::info!("opened the display address in Safari");
         Ok(())
     }
 }

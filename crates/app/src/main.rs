@@ -782,7 +782,7 @@ impl App {
             }
         };
         let url = display::DisplaySession::urls().into_iter().next().unwrap_or_else(|| format!("this PC's address, port {}", display::PORT));
-        tracing::info!("iPad display started: {url}");
+        tracing::info!("iPad display started: {}", display::redacted(&url));
         let proxy = self.proxy.clone();
         match tray::Tray::new(self.hwnd, "Mirrorly: iPad display", move |a| {
             let _ = proxy.send_event(UserEvent::Tray(a));

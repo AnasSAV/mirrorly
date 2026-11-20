@@ -15,6 +15,9 @@ uuid.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 input.workspace = true
+# SHA-256 for the pinned Developer Disk Image payloads (already in the tree
+# through idevice).
+ring = "0.17"
 # Local time for the names of photos fetched from the phone.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
