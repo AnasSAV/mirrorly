@@ -466,15 +466,19 @@ mod tests {
 
     /// Not elevated, a folder is owned by the user who made it: exactly
     /// what the elevated setup must refuse, like a junction planted where
-    /// the folder should be.
+    /// the folder should be. Elevated (as on CI), the folder it makes is the
+    /// administrators' and is kept.
     #[test]
     fn the_settings_folder_must_be_an_admin_owned_real_folder() {
+        use std::os::windows::io::AsRawHandle;
         let base = std::env::temp_dir().join(format!("mirrorly-secure-dir-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
-        let mine = base.join("made-by-a-user");
-        let err = secure_dir(&mine).unwrap_err().to_string();
-        assert!(err.contains("belongs to another account"), "{err}");
+        let made_here = base.join("made-here");
+        match secure_dir(&made_here) {
+            Ok(h) => assert!(owned_by_admins(HANDLE(h.as_raw_handle())).unwrap(), "elevated: owned by Administrators"),
+            Err(e) => assert!(e.to_string().contains("belongs to another account"), "{e}"),
+        }
         let target = base.join("elsewhere");
         std::fs::create_dir(&target).unwrap();
         let link = base.join("junction");
