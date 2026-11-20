@@ -13,7 +13,12 @@ The Rust crates are pinned on purpose (`idevice`, `windows`,
 `ffmpeg-sys-next` follow Apple's protocols and FFmpeg's ABI) and are updated
 by hand, with a test on a device.
 
-CI downloads BtbN's FFmpeg 9.0 LGPL shared build once and caches it. The
+CI downloads the FFmpeg 9.0 LGPL shared build pinned in
+`packaging/ffmpeg.txt` (one dated BtbN build, checked by SHA-256, with
+`packaging/get-ffmpeg.ps1`) and caches it; `build-release.ps1` refuses to
+package any other FFmpeg files. To move to a newer build, change the
+`url` and `sha256` there and run `get-ffmpeg.ps1 -Update` for the file
+hashes. BtbN keeps its month-end builds; its daily ones are deleted. The
 tests need no phone: they cover the parsing, layout and maths around it.
 
 ## Editing the wiki

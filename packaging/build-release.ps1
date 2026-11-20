@@ -4,8 +4,9 @@
 #   SHA256SUMS.txt
 #
 # Run from the repository root:  powershell -ExecutionPolicy Bypass -File packaging\build-release.ps1
-# Needs: Rust (MSVC), VS 2022 Build Tools, LLVM, FFmpeg in third_party\ffmpeg,
-# cargo-about (cargo install cargo-about --features cli), Inno Setup 6.
+# Needs: Rust (MSVC), VS 2022 Build Tools, LLVM, FFmpeg in third_party\ffmpeg
+# (packaging\get-ffmpeg.ps1 puts the pinned build there), cargo-about
+# (cargo install cargo-about --features cli), Inno Setup 6.
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -39,11 +40,24 @@ Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $stage | Out-Null
 $rel = Join-Path $root "target\release"
 Copy-Item "$rel\Mirrorly.exe" $stage
-# Only the FFmpeg libraries Mirrorly loads (checked with llvm-readobj --coff-imports).
+# Only the FFmpeg libraries Mirrorly loads (checked with llvm-readobj --coff-imports),
+# and only the exact files of the build pinned in packaging\ffmpeg.txt.
+$pinned = @{}
+foreach ($line in Get-Content packaging\ffmpeg.txt) {
+    if ($line -match '^bin/(.+)=([0-9a-f]{64})$') { $pinned[$Matches[1]] = $Matches[2] }
+}
+function Assert-Pinned($file) {
+    $want = $pinned[(Split-Path $file -Leaf)]
+    $got = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+    if (-not $want -or $got -ne $want) {
+        throw "$file is not the pinned FFmpeg build (run packaging\get-ffmpeg.ps1, then rebuild)"
+    }
+}
 foreach ($lib in 'avcodec', 'avutil', 'swresample') {
-    $dll = Get-ChildItem "$rel\$lib-*.dll" | Select-Object -First 1
-    if (-not $dll) { throw "$lib DLL missing in target\release" }
-    Copy-Item $dll.FullName $stage
+    $dll = @(Get-ChildItem "$rel\$lib-*.dll")
+    if ($dll.Count -ne 1) { throw "expected exactly one $lib DLL in target\release, found $($dll.Count)" }
+    Assert-Pinned $dll[0].FullName
+    Copy-Item $dll[0].FullName $stage
 }
 Copy-Item LICENSE "$stage\LICENSE.txt"
 New-Item -ItemType Directory -Force "$stage\licenses" | Out-Null
@@ -57,6 +71,7 @@ $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
 cargo about generate -c packaging\about.toml -m crates\app\Cargo.toml packaging\about.hbs -o "$stage\THIRD-PARTY-NOTICES.txt"
 if ($LASTEXITCODE -ne 0) { throw "cargo about failed" }
 
+Assert-Pinned (Join-Path $root 'third_party\ffmpeg\bin\ffmpeg.exe')
 $ffver = (& third_party\ffmpeg\bin\ffmpeg.exe -hide_banner -version | Select-Object -First 1) -replace '^ffmpeg version (\S+).*', '$1'
 $commit = if ($ffver -match '-g([0-9a-f]+)') { $Matches[1] } else { 'master' }
 @"

@@ -34,6 +34,9 @@ const LISTEN_ID: usize = 0x4D43_4C50; // "MCLP"
 /// Larger copies are not sent to the iPhone (they travel as one message).
 pub const MAX_TEXT_BYTES: usize = 8 << 20;
 pub const MAX_IMAGE_BYTES: usize = 32 << 20;
+/// Largest photo from the phone decoded for the clipboard (about 64
+/// megapixels: more than any iPhone camera, 48 MP).
+const MAX_DIB_PIXELS: usize = 64_000_000;
 
 /// What the Windows clipboard holds, as far as the iPhone is concerned.
 #[derive(Debug)]
@@ -95,6 +98,13 @@ impl Drop for Open {
     }
 }
 
+/// Whether a CanIncludeInClipboardHistory / CanUploadToCloudClipboard value
+/// allows the content: a DWORD that is not 0. Anything unreadable counts as
+/// "no", the safe side.
+fn allows(value: Option<&[u8]>) -> bool {
+    value.and_then(|b| b.get(..4)).is_some_and(|d| u32::from_le_bytes([d[0], d[1], d[2], d[3]]) != 0)
+}
+
 fn available(format: u32) -> bool {
     unsafe { IsClipboardFormatAvailable(format).is_ok() }
 }
@@ -122,9 +132,18 @@ pub fn read(hwnd: isize) -> Option<WinClip> {
             RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing")),
             RegisterClipboardFormatW(w!("Clipboard Viewer Ignore")),
         ];
+        // Windows' own clipboard history and cloud clipboard leave out content
+        // whose source set either of these to 0 (password managers do).
+        let opt_out = [
+            RegisterClipboardFormatW(w!("CanIncludeInClipboardHistory")),
+            RegisterClipboardFormatW(w!("CanUploadToCloudClipboard")),
+        ];
         let png = RegisterClipboardFormatW(w!("PNG"));
         let _open = Open::new(hwnd)?;
         if private.iter().any(|&f| f != 0 && available(f)) {
+            return None;
+        }
+        if opt_out.iter().any(|&f| f != 0 && available(f) && !allows(bytes(f).as_deref())) {
             return None;
         }
         if available(CF_HDROP.0 as u32) {
@@ -225,6 +244,14 @@ pub fn dib_to_png(dib: &[u8]) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_and_cloud_opt_outs_are_read_safely() {
+        assert!(allows(Some(&1u32.to_le_bytes())));
+        assert!(!allows(Some(&0u32.to_le_bytes())));
+        assert!(!allows(Some(&[1, 0])), "too short to read: no");
+        assert!(!allows(None));
+    }
 
     fn dib(width: i32, height: i32, bpp: u16, pixels: &[u8]) -> Vec<u8> {
         let mut d = Vec::new();
@@ -432,6 +459,9 @@ fn image_dib(path: &std::path::Path) -> Option<Vec<u8>> {
             .ok()?;
         let (mut w, mut h) = (0u32, 0u32);
         conv.GetSize(&mut w, &mut h).ok()?;
+        // The size comes from the file's header, which the phone's app wrote:
+        // refuse what no camera makes before allocating for it.
+        (w as usize).checked_mul(h as usize).filter(|&n| n <= MAX_DIB_PIXELS)?;
         let stride = w as usize * 4;
         let mut px = vec![0u8; stride * h as usize];
         conv.CopyPixels(std::ptr::null(), stride as u32, &mut px).ok()?;

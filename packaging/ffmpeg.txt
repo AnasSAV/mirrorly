@@ -1,0 +1,15 @@
+# The FFmpeg build Mirrorly is built with and ships (LGPL, shared): one
+# exact archive, and the files from it that are used. get-ffmpeg.ps1
+# downloads and checks it; build-release.ps1 refuses any other DLLs.
+#
+# BtbN's "latest" files change every day, and its daily builds are deleted
+# after a few weeks; its month-end builds are kept, so pin one of those.
+# To move to a newer build: change url and sha256 (GitHub shows the digest
+# on the release page), run get-ffmpeg.ps1 -Update to fill in the file
+# hashes below, then build and test.
+url=https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-31-12-59/ffmpeg-n9.0.2-39-g7adfbe40dc-win64-lgpl-shared-9.0.zip
+sha256=e907b01fa4783913151237e37df2a10fa97d99a1598a021bf59d4ae62ffed4c0
+bin/avcodec-63.dll=c20d1a5b282a83b5bc586b65b23cf4837d83c2caa3b4dd4863ede2dd0f1858b5
+bin/avutil-61.dll=cb50cdee16a5031090330997b51c016fe7788487150cd07fa20ddbda4d108d09
+bin/swresample-7.dll=12b907ddfff765e10c3b7da1a7985513dc9282c08953259f337f952f7b8a9f2a
+bin/ffmpeg.exe=ac68fc6b9c30b7378b54afccc7e9eff84b318ba1e876d9ab85c8b8cc1dd7e4ea

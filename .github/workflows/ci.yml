@@ -23,7 +23,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip
 
 jobs:
   build:
@@ -47,17 +46,13 @@ jobs:
         uses: actions/cache@v6
         with:
           path: third_party/ffmpeg
-          key: ffmpeg-n9.0-lgpl-shared-win64-v1
+          key: ffmpeg-${{ hashFiles('packaging/ffmpeg.txt') }}
 
+      # The exact build pinned in packaging/ffmpeg.txt, checked by SHA-256.
       - name: Download FFmpeg 9.0 (LGPL, shared)
         if: steps.ffmpeg.outputs.cache-hit != 'true'
         shell: pwsh
-        run: |
-          Invoke-WebRequest $env:FFMPEG_URL -OutFile ffmpeg.zip
-          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-unzipped
-          New-Item -ItemType Directory -Force third_party | Out-Null
-          Move-Item (Get-ChildItem ffmpeg-unzipped -Directory | Select-Object -First 1).FullName third_party/ffmpeg
-          Get-Content third_party/ffmpeg/include/libavutil/ffversion.h | Select-String FFMPEG_VERSION
+        run: ./packaging/get-ffmpeg.ps1
 
       - name: Rust build cache
         uses: Swatinem/rust-cache@v2

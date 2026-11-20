@@ -9,6 +9,10 @@
 const NAL_AP: u8 = 48;
 const NAL_FU: u8 = 49;
 const START_CODE: [u8; 4] = [0, 0, 0, 1];
+/// Largest access unit kept. The phone's biggest frames (iPad keyframes)
+/// are a few MiB; anything past this is marked corrupt instead of growing
+/// without end.
+const MAX_AU: usize = 32 << 20;
 
 /// A constant 14-byte footer the displayservice appends after the last
 /// fragment of each coded-slice NAL. It is not HEVC; Apple's receiver strips
@@ -150,6 +154,12 @@ impl Depacketizer {
                     self.corrupt = true;
                     return;
                 }
+                if self.fu.len() + p.len() > MAX_AU {
+                    self.corrupt = true;
+                    self.fu.clear();
+                    self.fu_open = false;
+                    return;
+                }
                 self.fu.extend_from_slice(&p[3..]);
                 if end {
                     let fu = std::mem::take(&mut self.fu);
@@ -166,6 +176,10 @@ impl Depacketizer {
     fn nal(&mut self, nal: &[u8]) {
         let nal = nal.strip_suffix(&DISPLAYSERVICE_TRAILER).unwrap_or(nal);
         if nal.is_empty() {
+            return;
+        }
+        if self.au.len() + START_CODE.len() + nal.len() > MAX_AU {
+            self.corrupt = true;
             return;
         }
         match (nal[0] >> 1) & 0x3f {
@@ -217,6 +231,29 @@ mod tests {
 
     fn feed(d: &mut Depacketizer, p: &Pkt, out: &mut Vec<AccessUnit>) {
         d.push(p.0, p.1, p.2, &p.3, 0, out);
+    }
+
+    #[test]
+    fn an_oversized_access_unit_stops_growing_and_is_corrupt() {
+        let mut d = Depacketizer::new();
+        let mut out = vec![];
+        let mut payload = vec![0x26, 0x01];
+        payload.resize(60_000, 0xAA);
+        let n = MAX_AU / payload.len() + 2;
+        for seq in 0..n {
+            feed(&mut d, &rtp(seq as u16, 10, seq == n - 1, &payload), &mut out);
+        }
+        assert_eq!(out.len(), 1);
+        assert!(out[0].corrupt);
+        assert!(out[0].data.len() <= MAX_AU);
+        // Fragments of one huge NAL stop too.
+        let mut fu = vec![0x62, 0x01, 0x93];
+        fu.resize(60_000, 0xBB);
+        for seq in 0..n {
+            feed(&mut d, &rtp((n + seq) as u16, 20, false, &fu), &mut out);
+            fu[2] = 0x13;
+        }
+        assert!(d.fu.len() <= MAX_AU);
     }
 
     #[test]

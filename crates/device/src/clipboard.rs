@@ -64,6 +64,12 @@ fn is_record(uti: &str) -> bool {
 const POLL: Duration = Duration::from_millis(800);
 /// Total size of one drop sent to the phone (it travels as one message).
 pub const MAX_PASTE_BYTES: u64 = 200 * 1024 * 1024;
+/// Limits on one copy fetched from the phone: items, bytes, and time. Any
+/// app on the phone can fill its clipboard, so a copy past these is refused
+/// rather than allowed to fill memory or the disk.
+const MAX_FETCH_ITEMS: usize = 100;
+const MAX_FETCH_BYTES: usize = 2 * 1024 * 1024 * 1024;
+const MAX_FETCH_TIME: Duration = Duration::from_secs(10 * 60);
 
 /// Photo and video types iOS puts on the clipboard, best first, with the
 /// file extension to save them under.
@@ -387,15 +393,63 @@ fn is_media(uti: &str) -> bool {
     )
 }
 
-/// A name that is safe on Windows: no path parts, no reserved characters.
+/// A name that is safe on Windows: no path parts, no reserved characters,
+/// no invisible characters that could disguise the extension, not a device
+/// name, and never one Windows would run when opened. The name comes from
+/// whatever app put the file on the phone's clipboard.
 fn safe_name(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
     let s: String = base
         .chars()
+        .filter(|&c| !invisible(c))
         .map(|c| if c.is_control() || r#"<>:"/\|?*"#.contains(c) { '_' } else { c })
+        .take(150)
         .collect();
-    let s = s.trim().trim_end_matches('.').to_string();
-    if s.is_empty() { "iPhone file".into() } else { s }
+    let s = s.trim().trim_end_matches(|c: char| c == '.' || c.is_whitespace()).to_string();
+    if s.is_empty() {
+        return "iPhone file".into();
+    }
+    let s = if device_name(&s) { format!("_{s}") } else { s };
+    if runs_when_opened(&s) { format!("{s}.txt") } else { s }
+}
+
+/// Characters that change how a name is shown without being seen: bidi
+/// overrides (which can make "fdp.exe" read as "exe.pdf"), zero-width
+/// characters and the like.
+fn invisible(c: char) -> bool {
+    matches!(c, '\u{00AD}' | '\u{061C}' | '\u{180E}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}'
+        | '\u{2060}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}')
+}
+
+/// CON, NUL, COM1 and the like open a device instead of a file, with or
+/// without an extension.
+fn device_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name).trim_end().to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+            && matches!(stem[3..].chars().collect::<Vec<_>>()[..], ['1'..='9' | '\u{B9}' | '\u{B2}' | '\u{B3}']))
+}
+
+/// Extensions Windows runs, or follows somewhere, when the file is opened.
+/// A file from the phone with one of these gets ".txt" added.
+fn runs_when_opened(name: &str) -> bool {
+    const RUN: &[&str] = &[
+        "exe", "com", "scr", "pif", "bat", "cmd", "vbs", "vbe", "js", "jse", "wsf", "wsh", "msi", "msp", "msc", "lnk",
+        "url", "hta", "cpl", "jar", "ps1", "psm1", "reg", "scf", "inf", "library-ms", "searchconnector-ms",
+        "settingcontent-ms", "appref-ms", "application", "gadget", "chm", "iso", "img", "vhd", "vhdx",
+    ];
+    name.rsplit_once('.').is_some_and(|(_, ext)| RUN.contains(&ext.to_ascii_lowercase().as_str()))
+}
+
+/// Mark a file from the phone the way Windows marks downloads (Mark of the
+/// Web), so SmartScreen and Office's Protected View treat it as from
+/// elsewhere. Best effort: drives without NTFS streams can't hold it.
+fn mark_from_elsewhere(path: &Path) {
+    let mut stream = path.as_os_str().to_owned();
+    stream.push(":Zone.Identifier");
+    if let Err(e) = std::fs::write(&stream, "[ZoneTransfer]\r\nZoneId=3\r\n") {
+        tracing::warn!("couldn't mark {} as from elsewhere: {e}", path.display());
+    }
 }
 
 /// `dir/name`, or `dir/stem (2).ext` and so on if that is taken.
@@ -571,7 +625,12 @@ impl Bridge {
             return Ok(());
         }
         tracing::info!("iPhone clipboard change {:?}: {} file(s)", snap.change, plans.len());
+        if plans.len() > MAX_FETCH_ITEMS {
+            bail!("too large to copy at once ({} items; at most {MAX_FETCH_ITEMS})", plans.len());
+        }
         (self.on_event)(ClipEvent::Fetching(plans.len()));
+        let started = tokio::time::Instant::now();
+        let mut total = 0usize;
 
         let dir = inbox().join(snap.change.unwrap_or(0).to_string());
         let _ = std::fs::remove_dir_all(inbox());
@@ -579,6 +638,9 @@ impl Bridge {
         let stamp = chrono::Local::now().format("%Y-%m-%d at %H.%M.%S").to_string();
         let mut files = Vec::new();
         for (n, (index, plan)) in plans.iter().enumerate() {
+            if started.elapsed() > MAX_FETCH_TIME {
+                bail!("too large to copy at once (still copying after {} minutes)", MAX_FETCH_TIME.as_secs() / 60);
+            }
             let (name, bytes) = match plan {
                 Plan::File { record, contents } => {
                     let record = self.with(Duration::from_secs(20), async |c| c.resolve(*index, record).await).await?;
@@ -593,8 +655,13 @@ impl Bridge {
                     (name, bytes)
                 }
             };
+            total += bytes.len();
+            if total > MAX_FETCH_BYTES {
+                bail!("too large to copy at once (more than {} MB)", MAX_FETCH_BYTES >> 20);
+            }
             let path = unique(&dir, &name);
             std::fs::write(&path, &bytes).with_context(|| format!("write {}", path.display()))?;
+            mark_from_elsewhere(&path);
             tracing::info!("fetched {} ({} B)", path.display(), bytes.len());
             files.push(path);
         }
@@ -754,6 +821,19 @@ mod tests {
         assert_eq!(safe_name("fibonacci heap.txt"), "fibonacci heap.txt");
         assert_eq!(safe_name("a/b:c?.txt"), "b_c_.txt");
         assert_eq!(safe_name("  ..  "), "iPhone file");
+        // An override that makes "Invoice\u{202E}fdp.exe" read as "Invoiceexe.pdf".
+        assert_eq!(safe_name("Invoice\u{202E}fdp.exe"), "Invoicefdp.exe.txt");
+        assert_eq!(safe_name("photo\u{200B}.jpg"), "photo.jpg");
+        assert_eq!(safe_name("report.pdf.lnk"), "report.pdf.lnk.txt");
+        assert_eq!(safe_name("Notes.URL"), "Notes.URL.txt");
+        assert_eq!(safe_name("CON"), "_CON");
+        assert_eq!(safe_name("com1.txt"), "_com1.txt");
+        assert_eq!(safe_name("COM\u{B9}"), "_COM\u{B9}");
+        assert_eq!(safe_name("console.txt"), "console.txt");
+        assert_eq!(safe_name("COM10.txt"), "COM10.txt");
+        assert_eq!(safe_name("a . "), "a");
+        assert_eq!(safe_name(&"x".repeat(400)).chars().count(), 150);
+        assert_eq!(safe_name("song.mp3"), "song.mp3");
         let dir = std::env::temp_dir().join(format!("mirrorly-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("x.txt"), b"").unwrap();
