@@ -177,6 +177,8 @@ flowchart LR
 ### Keyboard
 
 Typing goes straight to the iPhone, like a Bluetooth keyboard.
+The number pad types numbers with Num Lock on, and with it off moves the cursor
+as it does on Windows (arrows, Home, End, Page Up and Down, Delete).
 
 | Keys | Action |
 |---|---|
