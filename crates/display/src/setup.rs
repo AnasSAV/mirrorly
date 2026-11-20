@@ -174,6 +174,10 @@ fn driver_dir() -> Result<PathBuf> {
     {
         candidates.push(dir.join("vdd"));
     }
+    // Never in a release: the elevated setup must not look outside the
+    // install folder (the build machine's path means nothing here, and
+    // someone else could create it).
+    #[cfg(debug_assertions)]
     candidates.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging/vdd"));
     candidates
         .into_iter()

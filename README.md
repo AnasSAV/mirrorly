@@ -256,6 +256,12 @@ Drag files from Explorer and **drop them on the mirrored screen**.
   first so the paste lands there.
 - Fetched files are kept in `%LOCALAPPDATA%\Mirrorly\clipboard` until you copy
   something else.
+- Files from the iPhone are marked as coming from another computer, as
+  downloads are, so Windows and Office are as careful with them. A name
+  Windows would run when opened (`.exe`, `.lnk`, `.url` and the like) gets
+  `.txt` added, and invisible characters that could disguise a name are
+  removed.
+- One copy on the iPhone can bring at most 100 items and 2 GB.
 
 </details>
 
@@ -569,9 +575,10 @@ Windows 10/11 x64 with:
 - Visual Studio 2022 Build Tools with the C++ workload:
   `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
 - LLVM (libclang for bindgen): `winget install LLVM.LLVM`
-- FFmpeg 9.0 **LGPL shared** dev build unpacked to `third_party/ffmpeg`
-  (`include/`, `lib/`, `bin/`), e.g. BtbN's
-  `ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip`. Never a GPL build.
+- FFmpeg 9.0 **LGPL shared** dev build in `third_party/ffmpeg`: run
+  `powershell -ExecutionPolicy Bypass -File packaging\get-ffmpeg.ps1`, which
+  downloads the exact BtbN build pinned in `packaging/ffmpeg.txt` and checks
+  its SHA-256. Never a GPL build.
 
 ```powershell
 cmd /c "\"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat\" && cargo build --release"

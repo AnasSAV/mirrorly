@@ -35,7 +35,23 @@ pub async fn usb_devices() -> Result<Vec<UsbmuxdDevice>> {
     let mut mux = usbmuxd()
         .await
         .context("cannot reach Apple Mobile Device Service on 127.0.0.1:27015")?;
-    Ok(mux.get_devices().await?.into_iter().filter(|d| d.connection_type == Connection::Usb).collect())
+    let devices = mux.get_devices().await?.into_iter().filter(|d| d.connection_type == Connection::Usb);
+    Ok(devices
+        .filter(|d| {
+            let ok = valid_udid(&d.udid);
+            if !ok {
+                tracing::warn!("ignoring a USB device with an unusual id ({} characters)", d.udid.len());
+            }
+            ok
+        })
+        .collect())
+}
+
+/// An id as iPhones and iPads report it: letters, digits and dashes. Ids
+/// name Mirrorly's pairing files, so anything else (a path, "..") is refused
+/// rather than used.
+pub fn valid_udid(udid: &str) -> bool {
+    (1..=64).contains(&udid.len()) && udid.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
 /// The USB-attached device to use: the chosen one (`target`), or the only
@@ -154,4 +170,19 @@ pub async fn open_tunnel(provider: &NoDelayUsbmux) -> Result<Tunnel> {
 
 pub fn ms(since: Instant) -> f64 {
     since.elapsed().as_secs_f64() * 1000.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_plain_device_ids_are_used() {
+        assert!(valid_udid("00008030-001A35E22EF8802E"));
+        assert!(valid_udid("4f1c2a0b9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b"));
+        let long = "a".repeat(65);
+        for bad in ["", "..\\..\\canary", "C:\\Temp\\x", "\\\\host\\share\\x", "a/b", "id.plist", &long] {
+            assert!(!valid_udid(bad), "{bad}");
+        }
+    }
 }

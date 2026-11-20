@@ -27,6 +27,10 @@ fn embed_resources() {
 
 fn copy_ffmpeg_dlls() {
     println!("cargo:rerun-if-env-changed=FFMPEG_DIR");
+    // A new pinned build keeps its files' original dates, which can be older
+    // than the last build: the pin file says when it changed.
+    let pin = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("../../packaging/ffmpeg.txt");
+    println!("cargo:rerun-if-changed={}", pin.display());
     let Ok(ffmpeg) = std::env::var("FFMPEG_DIR") else {
         println!("cargo:warning=FFMPEG_DIR not set; FFmpeg DLLs not copied");
         return;
@@ -43,9 +47,11 @@ fn copy_ffmpeg_dlls() {
         let p = e.path();
         if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("dll")) {
             let dst = profile_dir.join(p.file_name().unwrap());
-            let stale = std::fs::metadata(&dst)
-                .and_then(|d| Ok(d.len() != e.metadata()?.len()))
-                .unwrap_or(true);
+            // Same size is not the same build: compare the bytes.
+            let stale = match (std::fs::read(&dst), std::fs::read(&p)) {
+                (Ok(old), Ok(new)) => old != new,
+                _ => true,
+            };
             if stale {
                 let _ = std::fs::copy(&p, &dst);
             }

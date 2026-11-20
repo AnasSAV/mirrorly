@@ -37,6 +37,12 @@ choose **Favorite** to find it in the sidebar.
 
 Up to 200 MB per drop. Folders aren't sent; drop the files in them.
 
+Files from the iPhone are marked as coming from another computer, as
+downloads are, so Windows and Office are as careful with them. A name
+Windows would run when opened (`.exe`, `.lnk`, `.url` and the like) gets
+`.txt` added, and invisible characters that could disguise a name are
+removed. One copy on the iPhone can bring at most 100 items and 2 GB.
+
 ## One clipboard
 
 | You copy | On | Then |
@@ -49,7 +55,8 @@ Up to 200 MB per drop. Folders aren't sent; drop the files in them.
 The newest copy wins: copy on the iPhone after the PC, and Ctrl+V in
 Mirrorly pastes the iPhone's copy.
 
-**Privacy.** Anything a password manager marks as private on the PC is never
+**Privacy.** Anything a password manager marks as private on the PC, or
+keeps out of Windows' clipboard history or cloud clipboard, is never
 sent to the iPhone, and text that comes from the iPhone is kept out of
 Windows' clipboard history and cloud clipboard. On the iPhone the paste
 suggestion reads *"Paste from dtpasteboardd"*: that is the iOS service

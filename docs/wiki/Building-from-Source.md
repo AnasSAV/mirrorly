@@ -9,7 +9,7 @@ Mirrorly is Rust, Windows only (x64).
 | Rust stable (MSVC) | `winget install Rustlang.Rustup` | The compiler |
 | Visual Studio 2022 Build Tools, C++ workload | `winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"` | Linker, and the headers bindgen reads |
 | LLVM | `winget install LLVM.LLVM` | libclang, for bindgen (the path is in `.cargo/config.toml`) |
-| FFmpeg 9.0, **LGPL shared** dev build | BtbN's [`ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip`](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip), unpacked so that `third_party/ffmpeg` holds `bin/`, `include/`, `lib/` | HEVC decoding, H.264 encoding. Never a GPL build. |
+| FFmpeg 9.0, **LGPL shared** dev build | `powershell -ExecutionPolicy Bypass -File packaging\get-ffmpeg.ps1`: downloads the exact BtbN build pinned in `packaging/ffmpeg.txt`, checks its SHA-256, and puts `bin/`, `include/`, `lib/` in `third_party/ffmpeg` | HEVC decoding, H.264 encoding. Never a GPL build. |
 
 ## Build and run
 

@@ -108,10 +108,15 @@ impl Decoder {
     /// low-delay mode that is this access unit's picture), or `None`.
     pub fn decode(&mut self, au: &[u8]) -> Result<Option<DecodedPicture>> {
         unsafe {
-            if ff::av_new_packet(self.pkt, au.len() as i32) < 0 {
+            // FFmpeg sizes packets with a C int (plus 64 bytes of padding);
+            // refuse what doesn't fit rather than let a cast shorten the buffer.
+            let Some(len) = i32::try_from(au.len()).ok().filter(|&n| n <= i32::MAX - 64) else {
+                bail!("access unit too large ({} bytes)", au.len());
+            };
+            if ff::av_new_packet(self.pkt, len) < 0 {
                 bail!("av_new_packet failed");
             }
-            ptr::copy_nonoverlapping(au.as_ptr(), (*self.pkt).data, au.len());
+            ptr::copy_nonoverlapping(au.as_ptr(), (*self.pkt).data, len as usize);
             let r = ff::avcodec_send_packet(self.ctx, self.pkt);
             ff::av_packet_unref(self.pkt);
             if r < 0 && r != AVERROR_EAGAIN {
