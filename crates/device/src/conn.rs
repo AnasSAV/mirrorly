@@ -22,6 +22,10 @@ const LABEL: &str = "iphone-mirror";
 
 pub async fn usbmuxd() -> Result<UsbmuxdConnection, IdeviceError> {
     let socket = tokio::net::TcpStream::connect(USBMUXD_ADDR).await?;
+    // Only Apple's service may answer here (see amds). Checked once the
+    // connection is made, so it is the listener this socket reached;
+    // nothing has been sent yet.
+    crate::amds::check_listener()?;
     // MIRROR_NAGLE=1 leaves Nagle on, only to measure what NODELAY buys.
     socket.set_nodelay(std::env::var_os("MIRROR_NAGLE").is_none())?;
     Ok(UsbmuxdConnection::new(Box::new(socket), 0))

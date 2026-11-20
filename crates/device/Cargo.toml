@@ -7,6 +7,7 @@ publish = false
 description = "iPhone connection, tunnel, media session, HID execution, reconnect"
 
 [dependencies]
+windows.workspace = true
 idevice.workspace = true
 tokio.workspace = true
 plist.workspace = true
