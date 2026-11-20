@@ -42,6 +42,8 @@ On an iPad display, the page before you start follows the iPad's own setting.
 
 Typing goes straight to the iPhone, like a Bluetooth keyboard. Ctrl stands in
 for ⌘.
+The number pad types numbers with Num Lock on, and with it off moves the cursor
+as it does on Windows (arrows, Home, End, Page Up and Down, Delete).
 
 | Keys | Action |
 |---|---|

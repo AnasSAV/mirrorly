@@ -1667,11 +1667,17 @@ impl ApplicationHandler<UserEvent> for App {
                 if code == KeyCode::KeyV && down && self.modifiers.control_key() && self.paste_from_windows() {
                     return;
                 }
-                if let Some(usage) = hid_usage(code) {
+                let num_lock = num_lock_on();
+                if let Some(mut usage) = hid_usage(code, num_lock) {
                     if down {
                         self.keys_down.insert(usage);
                     } else if !self.keys_down.remove(&usage) {
-                        return; // release of a key pressed before we had focus
+                        // Num Lock may have changed while a pad key was held:
+                        // release what the press sent.
+                        match hid_usage(code, !num_lock) {
+                            Some(other) if self.keys_down.remove(&other) => usage = other,
+                            _ => return, // release of a key pressed before we had focus
+                        }
                     }
                     self.send(HidEvent::Key { usage, down });
                 }
@@ -1679,6 +1685,12 @@ impl ApplicationHandler<UserEvent> for App {
             _ => {}
         }
     }
+}
+
+/// Whether Windows's Num Lock is on, as of the key message being handled.
+fn num_lock_on() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_NUMLOCK};
+    unsafe { GetKeyState(VK_NUMLOCK.0 as i32) & 1 != 0 }
 }
 
 fn hash_of(bytes: &[u8]) -> u64 {
