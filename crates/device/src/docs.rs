@@ -8,7 +8,8 @@
 //! (`UIFileSharingEnabled`, the Finder/iTunes "Files" tab), through
 //! house_arrest `VendDocuments`. Apps that also open documents in place show
 //! that folder in Files as On My iPhone › <app>. Dropped documents go into a
-//! "Mirrorly" folder there, with their names.
+//! "Mirrorly" folder there, with their names. The user can choose which of
+//! those apps; otherwise the first of [`PREFERRED`] that is installed.
 
 use std::path::Path;
 
@@ -29,7 +30,7 @@ const FOLDER: &str = "Mirrorly";
 const PREFERRED: &[&str] = &["org.videolan.vlc-ios", "com.google.chrome.ios"];
 
 /// An app whose Documents folder Files shows.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Host {
     pub bundle_id: String,
     pub name: String,
@@ -42,8 +43,44 @@ impl Host {
     }
 }
 
-/// Pick the app to keep dropped documents in.
-pub async fn find_host(adapter: &mut AdapterHandle, handshake: &mut RsdHandshake) -> Result<Option<Host>> {
+/// The file that remembers the user's choice: an app's bundle identifier.
+fn choice_file() -> std::path::PathBuf {
+    crate::paths::data_dir().join("documents-app")
+}
+
+/// The app the user chose for documents, if any (it may not be on this
+/// phone).
+pub fn chosen() -> Option<String> {
+    let s = std::fs::read_to_string(choice_file()).ok()?;
+    let id = s.trim();
+    (!id.is_empty()).then(|| id.to_string())
+}
+
+/// Remember `bundle_id` as the app for documents; `None` goes back to the
+/// automatic choice.
+pub fn choose(bundle_id: Option<&str>) -> Result<()> {
+    let f = choice_file();
+    match bundle_id {
+        Some(id) => {
+            std::fs::create_dir_all(crate::paths::data_dir())?;
+            std::fs::write(&f, id).with_context(|| format!("write {}", f.display()))
+        }
+        None => match std::fs::remove_file(&f) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e).with_context(|| format!("remove {}", f.display())),
+            _ => Ok(()),
+        },
+    }
+}
+
+/// Where documents go, of `hosts` (as [`list_hosts`] orders them): the
+/// chosen app when this phone has it, otherwise the first.
+pub fn pick(hosts: &[Host], chosen: Option<&str>) -> Option<Host> {
+    chosen.and_then(|id| hosts.iter().find(|h| h.bundle_id == id)).or(hosts.first()).cloned()
+}
+
+/// The apps on the phone that can keep documents, the preferred first and
+/// the rest by name.
+pub async fn list_hosts(adapter: &mut AdapterHandle, handshake: &mut RsdHandshake) -> Result<Vec<Host>> {
     let mut ip = InstallationProxyClient::connect_rsd(adapter, handshake).await.context("installation_proxy")?;
     let apps = ip.get_apps(Some("User"), None).await?;
     let mut hosts: Vec<Host> = apps
@@ -64,7 +101,7 @@ pub async fn find_host(adapter: &mut AdapterHandle, handshake: &mut RsdHandshake
         .collect();
     let rank = |h: &Host| PREFERRED.iter().position(|p| *p == h.bundle_id).unwrap_or(PREFERRED.len());
     hosts.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
-    Ok(hosts.into_iter().next())
+    Ok(hosts)
 }
 
 /// Copy `files` into the host app's Documents/Mirrorly, keeping names (a
@@ -115,6 +152,16 @@ fn free_name(name: &str, taken: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_chosen_app_wins_when_the_phone_has_it() {
+        let host = |id: &str| Host { bundle_id: id.into(), name: id.into() };
+        let hosts = [host("org.videolan.vlc-ios"), host("com.example.notes")];
+        assert_eq!(pick(&hosts, None), Some(host("org.videolan.vlc-ios")));
+        assert_eq!(pick(&hosts, Some("com.example.notes")), Some(host("com.example.notes")));
+        assert_eq!(pick(&hosts, Some("com.example.gone")), Some(host("org.videolan.vlc-ios")), "not on this phone");
+        assert_eq!(pick(&[], Some("com.example.notes")), None);
+    }
 
     #[test]
     fn names_never_overwrite() {

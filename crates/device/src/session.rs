@@ -148,6 +148,12 @@ impl DeviceHandle {
         let _ = self.clip_tx.send(ClipCmd::Push(content, paste));
     }
 
+    /// Ask which apps on the phone can keep documents (the answer comes as
+    /// `ClipEvent::DocApps`). Ignored while disconnected.
+    pub fn document_apps(&self) {
+        let _ = self.clip_tx.send(ClipCmd::DocApps);
+    }
+
     /// Open a web address in Safari on the device (the answer comes as
     /// `ClipEvent::UrlOpened`). Ignored while disconnected.
     pub fn open_url(&self, url: String) {

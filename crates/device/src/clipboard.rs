@@ -101,6 +101,9 @@ pub enum ClipEvent {
     /// The address was typed into Safari on the device (Ok), or that
     /// failed (the user has to open it).
     UrlOpened(Result<(), String>),
+    /// The apps that can keep documents on this phone (empty if none, or
+    /// if the phone didn't say).
+    DocApps(Vec<docs::Host>),
 }
 
 /// Windows clipboard content for the iPhone's clipboard.
@@ -119,6 +122,9 @@ pub enum ClipCmd {
     Push(PushContent, bool),
     /// Open this web address in Safari on the device.
     OpenUrl(String),
+    /// Ask the phone which apps can keep documents (answered with
+    /// `ClipEvent::DocApps`).
+    DocApps,
 }
 
 /// Safari's bundle identifier.
@@ -455,8 +461,9 @@ pub struct Bridge {
     now_us: fn() -> u64,
     on_event: Box<dyn Fn(ClipEvent) + Send + Sync>,
     client: Option<Pasteboard>,
-    /// Where documents are saved by name (looked up once per session).
-    docs_host: Option<Option<docs::Host>>,
+    /// The apps documents can be saved in (looked up once per session, and
+    /// again whenever the user looks at the choice).
+    doc_apps: Option<Vec<docs::Host>>,
     /// Last change count seen; the first look only sets it, so whatever was
     /// already copied before connecting is not offered.
     seen: Option<Option<i64>>,
@@ -470,7 +477,7 @@ impl Bridge {
         now_us: fn() -> u64,
         on_event: impl Fn(ClipEvent) + Send + Sync + 'static,
     ) -> Self {
-        Self { adapter, handshake, hid, now_us, on_event: Box::new(on_event), client: None, docs_host: None, seen: None }
+        Self { adapter, handshake, hid, now_us, on_event: Box::new(on_event), client: None, doc_apps: None, seen: None }
     }
 
     async fn client(&mut self) -> Result<&mut Pasteboard> {
@@ -516,6 +523,10 @@ impl Bridge {
                             tracing::warn!("clipboard to iPhone failed: {e:#}");
                             (self.on_event)(ClipEvent::Failed(format!("{e:#}")));
                         }
+                    }
+                    ClipCmd::DocApps => {
+                        let apps = self.refresh_doc_apps().await;
+                        (self.on_event)(ClipEvent::DocApps(apps));
                     }
                     ClipCmd::OpenUrl(url) => {
                         let r = self.open_url(&url).await.map_err(|e| format!("{e:#}"));
@@ -614,14 +625,11 @@ impl Bridge {
             loaded.iter().filter(|(f, _)| !is_media(uti_for(f))).map(|(f, b)| (*f, b.clone())).collect();
         let mut place = None;
         if !docs.is_empty() {
-            if self.docs_host.is_none() {
-                let host = docs::find_host(&mut self.adapter, &mut self.handshake).await;
-                self.docs_host = Some(host.unwrap_or_else(|e| {
-                    tracing::warn!("no app to keep documents in: {e:#}");
-                    None
-                }));
+            if self.doc_apps.is_none() {
+                self.refresh_doc_apps().await;
             }
-            match self.docs_host.clone().flatten() {
+            let apps = self.doc_apps.clone().unwrap_or_default();
+            match docs::pick(&apps, docs::chosen().as_deref()) {
                 Some(host) => {
                     docs::save(&mut self.adapter, &mut self.handshake, &host, &docs).await?;
                     place = Some(host.place());
@@ -671,6 +679,16 @@ impl Bridge {
         }
         (self.on_event)(ClipEvent::Pushed { pasted: paste });
         Ok(())
+    }
+
+    /// Ask the phone again which apps can keep documents.
+    async fn refresh_doc_apps(&mut self) -> Vec<docs::Host> {
+        let apps = docs::list_hosts(&mut self.adapter, &mut self.handshake).await.unwrap_or_else(|e| {
+            tracing::warn!("couldn't list the apps that keep documents: {e:#}");
+            Vec::new()
+        });
+        self.doc_apps = Some(apps.clone());
+        apps
     }
 
     /// Press these keys, in order, as from a hardware keyboard.
