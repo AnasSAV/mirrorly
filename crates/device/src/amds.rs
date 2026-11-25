@@ -4,37 +4,159 @@
 //! the PC, so when Apple's service isn't holding the port, another user's
 //! program could, and would become "the iPhone" (receiving the clipboard and
 //! keystrokes). So each connection is checked: the process listening on the
-//! port must be the running service of that name, which only an
-//! administrator can install.
+//! port must be Apple's, in one of the two ways Apple ships it:
+//!
+//! - **Apple Mobile Device Support** (with iTunes, or on its own) installs
+//!   the Windows service "Apple Mobile Device Service", which only an
+//!   administrator can install.
+//! - **Apple Devices** from the Microsoft Store runs the same thing
+//!   (`AppleMobileDeviceProcess.exe`) from its package, with no Windows
+//!   service. Its process is recognised by its package: Windows reports a
+//!   packaged process's family name, and where the package is installed
+//!   (under WindowsApps, which only the system writes to).
 
 use std::io;
 
 use windows::{
     Win32::{
+        Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, HANDLE},
         NetworkManagement::IpHelper::{GetExtendedTcpTable, MIB_TCPROW_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER},
         Networking::WinSock::AF_INET,
-        System::Services::{
-            CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, SC_HANDLE, SC_MANAGER_CONNECT,
-            SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_STATUS_PROCESS,
+        Storage::Packaging::Appx::{GetPackageFamilyName, GetPackagePathByFullName, GetPackagesByPackageFamily},
+        System::{
+            Services::{
+                CloseServiceHandle, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx, SC_HANDLE,
+                SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_QUERY_STATUS, SERVICE_RUNNING,
+                SERVICE_STATUS_PROCESS,
+            },
+            Threading::{OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW},
         },
     },
-    core::w,
+    core::{HSTRING, PCWSTR, PWSTR, w},
 };
 
 pub const PORT: u16 = 27015;
 
-/// Fails unless Apple Mobile Device Service is what listens on the port.
+/// The package family of Apple Devices in the Microsoft Store (product
+/// 9NP83LWLPZ9K, as Microsoft's Store catalog lists it). The part after
+/// `_` is derived from the publisher's signing identity, so no package from
+/// another publisher can have this family name.
+const APPLE_DEVICES: &str = "AppleInc.AppleDevices_nzyj5cx40ttqa";
+
+/// Fails unless Apple's service is what listens on the port: Apple Mobile
+/// Device Service, or the Apple Devices app.
 pub fn check_listener() -> io::Result<()> {
-    let Some(service) = service_pid() else {
-        return Err(io::Error::new(io::ErrorKind::NotFound, "Apple Mobile Device Service is not running"));
+    let Some(pid) = listener_pid(PORT)? else {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("nothing listens on 127.0.0.1:{PORT}: Apple Mobile Device Service is not running"),
+        ));
     };
-    match listener_pid(PORT)? {
-        Some(pid) if pid == service => Ok(()),
-        Some(pid) => Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            format!("127.0.0.1:{PORT} is held by process {pid}, not Apple Mobile Device Service ({service})"),
-        )),
-        None => Err(io::Error::new(io::ErrorKind::NotFound, format!("nothing listens on 127.0.0.1:{PORT}"))),
+    if service_pid() == Some(pid) || from_package(pid, APPLE_DEVICES) {
+        return Ok(());
+    }
+    let who = Process::open(pid)
+        .and_then(|p| p.image())
+        .map_or_else(|| format!("process {pid}"), |exe| format!("{exe} (process {pid})"));
+    Err(io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        format!("127.0.0.1:{PORT} is held by {who}, which is neither Apple Mobile Device Service nor the Apple Devices app"),
+    ))
+}
+
+/// Whether the process belongs to the package family: it runs with that
+/// package's identity, or its program is inside where the package is
+/// installed.
+fn from_package(pid: u32, family: &str) -> bool {
+    let Some(p) = Process::open(pid) else {
+        return false;
+    };
+    if p.family().is_some_and(|f| f.eq_ignore_ascii_case(family)) {
+        return true;
+    }
+    p.image().is_some_and(|exe| package_paths(family).iter().any(|dir| inside(&exe, dir)))
+}
+
+/// Whether `path` is in the folder `dir` (or below it).
+fn inside(path: &str, dir: &str) -> bool {
+    let (path, dir) = (path.to_lowercase(), dir.trim_end_matches('\\').to_lowercase());
+    path.strip_prefix(&dir).is_some_and(|rest| rest.starts_with('\\'))
+}
+
+/// Where each installed package of the family is: Windows's own record.
+fn package_paths(family: &str) -> Vec<String> {
+    let family = HSTRING::from(family);
+    let (mut count, mut len) = (0u32, 0u32);
+    unsafe {
+        if GetPackagesByPackageFamily(&family, &mut count, None, &mut len, None) != ERROR_INSUFFICIENT_BUFFER {
+            return Vec::new(); // none installed
+        }
+        let mut names = vec![PWSTR::null(); count as usize];
+        let mut buf = vec![0u16; len as usize];
+        if GetPackagesByPackageFamily(&family, &mut count, Some(names.as_mut_ptr()), &mut len, Some(PWSTR(buf.as_mut_ptr())))
+            != ERROR_SUCCESS
+        {
+            return Vec::new();
+        }
+        names
+            .iter()
+            .take(count as usize)
+            .filter_map(|name| {
+                let name = PCWSTR(name.0);
+                let mut len = 0u32;
+                if GetPackagePathByFullName(name, &mut len, None) != ERROR_INSUFFICIENT_BUFFER {
+                    return None;
+                }
+                let mut path = vec![0u16; len as usize];
+                if GetPackagePathByFullName(name, &mut len, Some(PWSTR(path.as_mut_ptr()))) != ERROR_SUCCESS {
+                    return None;
+                }
+                Some(wide(&path))
+            })
+            .collect()
+    }
+}
+
+/// A UTF-16 buffer up to its terminating NUL.
+fn wide(buf: &[u16]) -> String {
+    let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    String::from_utf16_lossy(&buf[..end])
+}
+
+/// A process opened only to read its program and package.
+struct Process(HANDLE);
+
+impl Process {
+    fn open(pid: u32) -> Option<Self> {
+        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok().map(Process) }
+    }
+
+    /// The package family it runs as; None for a process without a package.
+    fn family(&self) -> Option<String> {
+        let mut len = 0u32;
+        unsafe {
+            if GetPackageFamilyName(self.0, &mut len, None) != ERROR_INSUFFICIENT_BUFFER {
+                return None;
+            }
+            let mut buf = vec![0u16; len as usize];
+            (GetPackageFamilyName(self.0, &mut len, Some(PWSTR(buf.as_mut_ptr()))) == ERROR_SUCCESS).then(|| wide(&buf))
+        }
+    }
+
+    /// The full path of its program.
+    fn image(&self) -> Option<String> {
+        let mut buf = vec![0u16; 32_768];
+        let mut len = buf.len() as u32;
+        unsafe { QueryFullProcessImageNameW(self.0, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len).ok()? };
+        Some(String::from_utf16_lossy(&buf[..len as usize]))
+    }
+}
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
     }
 }
 
@@ -130,6 +252,43 @@ mod tests {
             t.extend_from_slice(&pid.to_ne_bytes());
         }
         assert_eq!(parse_table(&t), vec![([127, 0, 0, 1], 27015, 5620), ([0, 0, 0, 0], 8765, 42)]);
+    }
+
+    #[test]
+    fn inside_means_in_the_folder() {
+        let dir = r"C:\Program Files\WindowsApps\AppleInc.AppleDevices_1.1792.39681.0_x64__nzyj5cx40ttqa";
+        assert!(inside(&format!(r"{dir}\AMDS\AppleMobileDeviceProcess.exe"), dir));
+        assert!(inside(&format!(r"{}\x.exe", dir.to_uppercase()), dir), "paths compare without case");
+        assert!(inside(&format!(r"{dir}\x.exe"), &format!(r"{dir}\")), "a trailing backslash on the folder");
+        assert!(!inside(&format!(r"{dir}x\x.exe"), dir), "a folder whose name only starts the same");
+        assert!(!inside(dir, dir), "the folder itself is no program in it");
+        assert!(!inside(r"C:\Users\me\AppleMobileDeviceProcess.exe", dir));
+    }
+
+    #[test]
+    fn a_process_without_a_package_is_not_apple_devices() {
+        assert!(!from_package(std::process::id(), APPLE_DEVICES));
+        assert_eq!(Process::open(std::process::id()).and_then(|p| p.family()), None);
+    }
+
+    /// The package checks against a packaged process every Windows 11 PC
+    /// runs: `cargo test -p device -- --ignored`.
+    #[test]
+    #[ignore]
+    fn a_packaged_process_is_recognised() {
+        const START: &str = "Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy";
+        let out = std::process::Command::new("tasklist")
+            .args(["/fi", "imagename eq StartMenuExperienceHost.exe", "/fo", "csv", "/nh"])
+            .output()
+            .unwrap();
+        let line = String::from_utf8_lossy(&out.stdout);
+        let pid: u32 = line.split(',').nth(1).unwrap().trim_matches('"').parse().unwrap();
+        let p = Process::open(pid).unwrap();
+        assert_eq!(p.family().as_deref(), Some(START));
+        assert!(from_package(pid, START));
+        let exe = p.image().unwrap();
+        assert!(package_paths(START).iter().any(|dir| inside(&exe, dir)), "{exe} is in the package's folder");
+        assert!(!from_package(pid, APPLE_DEVICES));
     }
 
     /// On a PC with Apple's service running: `cargo test -p device -- --ignored`.
